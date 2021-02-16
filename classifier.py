@@ -5,13 +5,13 @@ from sklearn import metrics
 from sklearn import svm
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import Perceptron
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import cross_val_score, train_test_split
 
 # Logging configuration
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s:%(levelname)s:%(funcName)s:%(message)s')
-file_handler = logging.FileHandler('logfile.log')
+formatter = logging.Formatter("%(asctime)s:%(levelname)s:%(funcName)s:%(message)s")
+file_handler = logging.FileHandler("logfile.log")
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
@@ -19,8 +19,8 @@ class ASCClassifier:
     def __init__(self):
         ""
 
-        model_attributes = ['clf', 'accuracy', 'f1']
-        self.model = namedtuple('Model', model_attributes)
+        model_attributes = ["clf", "accuracy", "micro_f1", "cv_mean", "cv_std"]
+        self.model = namedtuple("Model", model_attributes)
 
     def train(self, train_file, target, test_model=False):
         ""
@@ -51,43 +51,53 @@ class ASCClassifier:
         ""
         
         # Class label must be at column index 2
-        labels = train_data.columns[2]
-        train_text = train_data.text
-        y_train = train_data[labels]
-
+        label = train_data.columns[2]
+        y_train = y_all = train_data[label]
+        
+        # Vectorize text for classification (= convert to numbers)
         # Bag of words
-        vectorizer = CountVectorizer(min_df=2)
+        vectorizer = CountVectorizer()
         # Or choose TF-IDF:
         # vectorizer = TfidfVectorizer()
-        X_train = vectorizer.fit_transform(train_text)
+        X_train = X_all = vectorizer.fit_transform(train_data.text)
         
         # Linear SVM
-        # Balanced class weight gave better accuracy than unbalanced (+0.035)
         clf = svm.SVC(kernel="linear", class_weight="balanced")
         clf.fit(X_train, y_train)
-        logger.info(f"Created baseline classifier {clf}")
+        accuracy = f1 = None
+        logger.info(f"Created {label} baseline classifier {clf}")
         
-        return self.evaluate(clf, test_data, vectorizer)
+        # If testing model, split into X and y
+        if not test_data.empty:
+            y_test = test_data[label]
+            X_test = vectorizer.transform(test_data.text)
+            # Evaluate
+            accuracy, f1 = self.evaluate(clf, X_test, y_test)
+            # Join train and test data for cross validation
+            all_data = pd.concat([train_data, test_data])
+            X_all = vectorizer.fit_transform(all_data.text)
+            y_all = all_data[label]
+        
+        # 10-fold cross validation on all available data
+        cv_scores = cross_val_score(clf, X_all, y_all, cv=10, scoring="f1_micro")
+        logger.info(f"Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
+        
+        # Return namedtuple of classifier and metrics
+        return self.model(clf, accuracy, f1, cv_scores.mean(), cv_scores.std())
 
     def predict(self):
         ""
 
         pass
 
-    def evaluate(self, clf, test_data, vectorizer=None):
+    def evaluate(self, clf, X_test, y_test):
         ""
 
-        # If no test data supplied, return
-        if test_data.empty:
-            return self.model(clf, None, None)
-        
-        y_test = test_data[test_data.columns[2]]
-        X_test = vectorizer.transform(test_data.text)
         pred = clf.predict(X_test)
         accuracy = metrics.accuracy_score(y_test, pred)
         f1 = metrics.f1_score(y_test, pred, average="micro")
-        logger.info(f"Baseline classifier {clf}: Accuracy {accuracy:.3f}, micro f1 {f1:.3f}")
-        return self.model(clf, accuracy, f1)
+        logger.info(f"Accuracy on test set {accuracy:.3f}, micro f1 {f1:.3f}")
+        return accuracy, f1
 
     def _read_file(self, fn, target):
         ""
@@ -118,4 +128,13 @@ if __name__ == '__main__':
     # pd.set_option('display.max_columns', None)
     f = 'data/corpus.txt'
     clf = ASCClassifier()
-    clf.train(f, "atheism", test_model=True)
+    # clf.train(f, "atheism", test_model=False)
+    
+    # Run automatically for different targets
+    # targets = ["atheism", "supernatural", "christianity", "islam"]
+    targets = ["atheism"]
+    testing = False
+    for t in targets:
+        print(t.upper())
+        clf.train(f, t, test_model=testing)
+        print()
