@@ -22,10 +22,10 @@ class ASCClassifier:
         model_attributes = ['clf', 'accuracy', 'f1']
         self.model = namedtuple('Model', model_attributes)
 
-    def train(self, train_file, test_model=False):
+    def train(self, train_file, target, test_model=False):
         ""
 
-        train_data = self._read_file(train_file)
+        train_data = self._read_file(train_file, target)
         test_data = pd.DataFrame()
         # Split dataset if classifier should be tested
         if test_model:
@@ -87,13 +87,15 @@ class ASCClassifier:
         logger.info(f"Baseline classifier {clf}: Accuracy {accuracy:.3f}, micro f1 {f1:.3f}")
         return self.model(clf, accuracy, f1)
 
-    def _read_file(self, fn):
+    def _read_file(self, fn, target):
         ""
 
         df = pd.read_table(fn)
+        if target not in df.columns:
+            raise ValueError(f"Target '{target}' is not a column in the data")
         logger.info(f"Read data from {fn}: {df.shape} dataframe")
         # Drop all columns except id, text, atheism stance
-        return df[["id", "text", "atheism"]]
+        return df[["id", "text", target]]
 
     def _split_dataset(self, df, seed=None):
         ""
@@ -115,6 +117,4 @@ if __name__ == '__main__':
     # pd.set_option('display.max_columns', None)
     f = 'data/corpus.txt'
     clf = ASCClassifier()
-    clf.train(f, test_model=True)
-    # clf.train('data/dataset_training.json', 'model.tsv')
-    # clf.evaluate('data/dataset_validation.json', 'model.tsv')
+    clf.train(f, "atheism", test_model=True)
