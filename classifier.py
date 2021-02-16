@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 from sklearn import metrics
 from sklearn import svm
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import Perceptron
 from sklearn.model_selection import train_test_split
 
@@ -30,7 +30,7 @@ class ASCClassifier:
         # Split dataset if classifier should be tested
         if test_model:
             # seed=21 shows atheism=[0,-1,1,0,0] at .head()
-            train_data, test_data = self._split_dataset(train_data, seed=21)
+            train_data, test_data = self._split_dataset(train_data, target, seed=21)
         logger.info(f"Training start")
         
         # Baseline classifier: Linear SVM 
@@ -56,7 +56,9 @@ class ASCClassifier:
         y_train = train_data[labels]
 
         # Bag of words
-        vectorizer = TfidfVectorizer()
+        vectorizer = CountVectorizer(min_df=2)
+        # Or choose TF-IDF:
+        # vectorizer = TfidfVectorizer()
         X_train = vectorizer.fit_transform(train_text)
         
         # Linear SVM
@@ -97,13 +99,12 @@ class ASCClassifier:
         # Drop all columns except id, text, atheism stance
         return df[["id", "text", target]]
 
-    def _split_dataset(self, df, seed=None):
+    def _split_dataset(self, df, target, seed=None):
         ""
 
         # Split in train and test sets (80:20)
-        # FIXME: Stratify by last column = class
         train, test = train_test_split(df, test_size=0.2, random_state=seed,
-                                       stratify=df[df.columns[-1]])
+                                       stratify=df[target])
         return train, test
     
     def _extract_features(self, df):
