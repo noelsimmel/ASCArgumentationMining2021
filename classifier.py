@@ -1,10 +1,13 @@
 from collections import namedtuple
 import logging
+import numpy as np
 import pandas as pd
 from sklearn import metrics
 from sklearn import svm
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.pipeline import Pipeline, FeatureUnion
+from transformers import AverageWordLengthExtractor
 
 # Logging configuration
 logger = logging.getLogger(__name__)
@@ -24,40 +27,76 @@ class ASCClassifier:
     def train(self, train_file, target, test_model=False):
         ""
 
+        # Import data
         train_data = self._read_file(train_file, target)
-        test_data = pd.DataFrame()
+        # smallest possible dataset for splitting => 8:3, classes [1, 0, -1]
+        # train_data = train_data[:11]
+        X_test = y_test = None
+        
         # Split dataset if classifier should be tested
         if test_model:
-            # seed=21 shows atheism=[0,-1,1,0,0] at .head()
+            # seed=21 gives atheism classes [0,-1,1,0,0]
             train_data, test_data = self._split_dataset(train_data, target, seed=21)
+            X_test = list(test_data["text"])
+            y_test = list(test_data[target])
+        X_train = list(train_data["text"])
+        y_train = list(train_data[target])
+            
         logger.info(f"Training start")
         
         # Baseline classifier: Linear SVM with bag of words features
-        baseline_clf = self.build_model(train_data, test_data, CountVectorizer(),
-                                        svm.SVC(kernel="linear", class_weight="balanced"))
-        print(baseline_clf)
+        baseline_clf = svm.SVC(kernel="linear", class_weight="balanced")
+        baseline_transformers = [("bow", CountVectorizer())]
+        baseline_ppl = self.build_pipeline(X_train, y_train, baseline_transformers, baseline_clf)
+        # 10-fold cross validation on all available data
+        cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
         
-        # Extract features
-        # features = self._extract_features(train_data)
-        # data = pd.merge(train_data, features, on="id")
-        # logger.info(f"Training finished: df shape {data.shape}, {features.shape[1]} features")
-
-    def build_model(self, train_data, test_data, vectorizer, clf):
+        # If testing model, evaluate
+        accuracy = f1 = None
+        if X_test and y_test:
+            accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
+        baseline_model = self.model(baseline_ppl, accuracy, f1, cv_scores.mean(), cv_scores.std())
+        print(baseline_model)
+        
+        
+        # another classifier goes here ...
+        # transformers = [("bow", CountVectorizer()),
+        #                 ("average", AverageWordLengthExtractor())]
+        # ppl = self.build_pipeline(X_train, y_train, transformers, baseline_clf)
+        # # 10-fold cross validation on all available data
+        # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        
+    def build_model(self, X_train, y_train, X_test, y_test, vectorizer, clf):
         ""
         
-        # Class label must be at column index 2
-        label = train_data.columns[2]
-        y_train = y_all = train_data[label]
+        y_train = y_all = train_data[target]
         
-        X_train = X_all = vectorizer.fit_transform(train_data.text)
+        data = train_data.text
+        # data = pd.Series(["dies ist text eins", "das hier ist text text zwei"])
+        X_train = X_all = vectorizer.fit_transform(data)
         
         clf.fit(X_train, y_train)
         accuracy = f1 = None
         logger.info(f"Created {label} classifier {clf}")
         
+        # doc idx (axis 0) of most frequent token: idx_0 = int(X_train.argmax()/X_train.shape[1])
+        # token idx (axis 1) of most frequent token: idx_1 = int(X_train.argmax(axis=1)[idx_0])
+        # freq of most freq token: X_train.max()
+        
+        # list with tuples (token, freq), ordered alphabetically:
+        # https://stackoverflow.com/a/16078639/2491761
+        # tc = zip(vectorizer.get_feature_names(), np.asarray(X_train.sum(axis=0)).ravel())
+        # # as df (idx is feature idx as in vectorizer.vocabulary_ !)
+        # df = pd.DataFrame(tc, columns=["token", "freq"])
+        # print(X_train.toarray())
+        # print(int(X_train.argmax(axis=1)[1]))
+        # print(vectorizer.vocabulary_)
+        # print(vectorizer.get_feature_names())
+        # return
+        
         # If testing model, split into X and y
         if not test_data.empty:
-            y_test = test_data[label]
+            y_test = test_data[target]
             X_test = vectorizer.transform(test_data.text)
             # Evaluate
             accuracy, f1 = self.evaluate_metrics(clf, X_test, y_test)
@@ -72,19 +111,31 @@ class ASCClassifier:
         # Return namedtuple of classifier and metrics
         return self.model(clf, accuracy, f1, cv_scores.mean(), cv_scores.std())
     
-    def evaluate_metrics(self, clf, X_test, y_test):
+    def build_pipeline(self, X_train, y_train, transformers, clf):
+        ""
+        
+        pipeline = Pipeline([("features", FeatureUnion(transformers)), 
+                             ("clf", clf)])
+        logger.info(f"Created pipeline: {pipeline.get_params()}")
+        
+        pipeline.fit(X_train, y_train)
+        logger.info("Fitted pipeline to training data")
+        
+        return pipeline
+    
+    def evaluate_metrics(self, pipeline, X_test, y_test):
         ""
 
-        pred = clf.predict(X_test)
+        pred = pipeline.predict(X_test)
         accuracy = metrics.accuracy_score(y_test, pred)
         f1 = metrics.f1_score(y_test, pred, average="micro")
         logger.info(f"Accuracy on test set {accuracy:.3f}, micro f1 {f1:.3f}")
         return accuracy, f1
     
-    def evaluate_cv(self, clf, X, y):
+    def evaluate_cv(self, pipeline, X, y):
         ""
         
-        cv_scores = cross_val_score(clf, X, y, cv=10, scoring="f1_micro")
+        cv_scores = cross_val_score(pipeline, X, y, cv=10, scoring="f1_micro")
         logger.info(f"Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
         return cv_scores
     
@@ -127,7 +178,7 @@ if __name__ == '__main__':
     # Run automatically for different targets
     # targets = ["atheism", "supernatural", "christianity", "islam"]
     targets = ["atheism"]
-    testing = False
+    testing = True
     for t in targets:
         print(t.upper())
         clf.train(f, t, test_model=testing)
