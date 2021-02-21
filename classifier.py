@@ -1,10 +1,11 @@
 from collections import namedtuple
 import logging
+from nltk import pos_tag
 import numpy as np
 import pandas as pd
 from sklearn import metrics
 from sklearn import svm
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline, FeatureUnion
 from transformers import AverageWordLengthExtractor
@@ -50,31 +51,35 @@ class ASCClassifier:
         y_train = list(train_data[target])
         
         logger.info(f"Training start")
+        # Use this when using custom preprocessing/tokenizing
         countvec = CountVectorizer(tokenizer=dummy, preprocessor=dummy, lowercase=False)
+        # TF-IDF on POS tags
+        pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
         
-        # Baseline classifier: Linear SVM with bag of words features
-        baseline_clf = svm.SVC(kernel="linear", class_weight="balanced")
-        baseline_transformers = [("bow", countvec)]
-        baseline_ppl = self.build_pipeline(X_train, y_train, baseline_transformers, baseline_clf)
-        # 10-fold cross validation on all available data
-        cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
-        
-        # If testing model, evaluate
-        accuracy = f1 = None
-        if X_test and y_test:
-            accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
-        baseline_model = self.model(baseline_ppl, accuracy, f1, cv_scores.mean(), cv_scores.std())
-        print(baseline_model)
-        
-        
-        # # another classifier goes here ...
-        # transformers = [("bow", countvec),
-        #                 ("average", AverageWordLengthExtractor())]
-        # clf = svm.SVC(kernel="linear", class_weight="balanced")
-        # ppl = self.build_pipeline(X_train, y_train, transformers, clf)
+        # # Baseline classifier: Linear SVM with bag of words features
+        # baseline_clf = svm.SVC(kernel="linear", class_weight="balanced")
+        # baseline_transformers = [("bow", countvec)]
+        # baseline_ppl = self.build_pipeline(X_train, y_train, baseline_transformers, baseline_clf)
         # # 10-fold cross validation on all available data
-        # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
-        # print(cv_scores.mean(), cv_scores.std())
+        # cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
+        
+        # # If testing model, evaluate
+        # accuracy = f1 = None
+        # if X_test and y_test:
+        #     accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
+        # baseline_model = self.model(baseline_ppl, accuracy, f1, cv_scores.mean(), cv_scores.std())
+        # print(baseline_model)
+        
+        
+        # another classifier goes here ...
+        transformers = [("bow", countvec),
+                        ("average", AverageWordLengthExtractor()),
+                        ("pos_tdidf", pos_tfidf)]
+        clf = svm.SVC(kernel="linear", class_weight="balanced")
+        ppl = self.build_pipeline(X_train, y_train, transformers, clf)
+        # 10-fold cross validation on all available data
+        cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        print(cv_scores.mean(), cv_scores.std())
         
     def build_model(self, X_train, y_train, X_test, y_test, vectorizer, clf):
         ""
@@ -124,9 +129,13 @@ class ASCClassifier:
     def build_pipeline(self, X_train, y_train, transformers, clf):
         ""
         
-        pipeline = Pipeline([("preprocessing", Preprocessor()),
-                             ("features", FeatureUnion(transformers)), 
-                             ("clf", clf)])
+        if transformers == []:
+            pipeline = Pipeline([("preprocessing", Preprocessor()),
+                                 ("clf", clf)])
+        else:
+            pipeline = Pipeline([("preprocessing", Preprocessor()),
+                                 ("features", FeatureUnion(transformers)), 
+                                 ("clf", clf)])
         logger.info(f"Created pipeline: {pipeline.get_params()}")
         
         pipeline.fit(X_train, y_train)
@@ -174,11 +183,11 @@ class ASCClassifier:
                                        stratify=df[target])
         return train, test
     
-    def _extract_features(self, df):
+    def _pos_tagger(self, tokenized_data):
         ""
-
-        logger.info(f"Feature extraction start: {len(df)} instances")
-        pass
+        
+        # Not included since it raises cv std
+        return [token+"/"+tag for token, tag in pos_tag(tokenized_data)]
     
 
 if __name__ == '__main__':
