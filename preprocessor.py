@@ -1,3 +1,4 @@
+from nltk.corpus import stopwords
 import re
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -15,6 +16,9 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         
         doc = self._clean(doc)
         doc = self._tokenize(doc)
+        # TODO lowercase?
+        doc = self._remove_stopwords(doc)
+        # TODO lemmatization/stemming?
         return doc
     
     def _clean(self, doc):
@@ -26,10 +30,6 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         doc = re.sub(r"(\@)\S+", "MENTION", doc)
         # Replace #atheism with HASHTAG atheism
         doc = re.sub(r"(\#)", "HASHTAG ", doc)
-        # Remove "'ll" (e.g. "I'll"), "won't" since sklearn tokenizer doesn't
-        # "won't" will be lemmatized as "won", which is semantically different
-        doc = re.sub(r"'ll", "", doc)
-        doc = re.sub(r"won't", "wont", doc)
         return doc
     
     def _tokenize(self, doc):
@@ -44,3 +44,9 @@ class Preprocessor(BaseEstimator, TransformerMixin):
                                     \b\w\w+\b           # Match tokens with len>1""", 
                                    re.X)
         return re.findall(token_pattern, doc)
+    
+    def _remove_stopwords(self, doc):
+        ""
+        
+        sw = set(stopwords.words("english"))
+        return [tok for tok in doc if tok not in sw]
