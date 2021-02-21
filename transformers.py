@@ -1,7 +1,8 @@
+from abc import ABC, abstractmethod
 from numpy import mean
 from sklearn.base import BaseEstimator, TransformerMixin
 
-class AverageWordLengthExtractor(BaseEstimator, TransformerMixin):
+class BaseCustomTransformer(ABC, BaseEstimator, TransformerMixin):
     ""
 
     def fit(self, data, y=None):
@@ -9,11 +10,20 @@ class AverageWordLengthExtractor(BaseEstimator, TransformerMixin):
 
     def transform(self, data, y=None):
         # Uncomment for pandas version:
-        # data = data["text"].apply(self.average_word_length)
+        # data = data["text"].apply(self.make_feature)
         
-        return self.average_word_length(data)
+        return self.make_feature(data)
     
-    def average_word_length(self, data):
+    @abstractmethod
+    def make_feature(self, data):
+        ""
+        
+        return []
+
+class AverageWordLengthExtractor(BaseCustomTransformer):
+    ""
+
+    def make_feature(self, data):
         ""
         
         # Uncomment for pandas version:
