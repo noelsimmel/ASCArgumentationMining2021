@@ -30,19 +30,20 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         doc = re.sub(r"(\@)\S+", "MENTION", doc)
         # Replace #atheism with HASHTAG atheism
         doc = re.sub(r"(\#)", "HASHTAG ", doc)
+        # Replace Quran quotes with QURAN_QUOTE
+        doc = re.sub(r"(Quran \(*[0-9]+[:|\.][0-9]+\)*)", "Quran QURANQUOTE", doc)
+        # Replace Bible quotes with BIBLE_QUOTE
+        # It is assumed that Quran quotes are preceded by "Quran ",
+        # while Bible quotes are preceded by the respective book
+        doc = re.sub(r"[0-9]+[:|\.][0-9]+", "BIBLEQUOTE", doc)
         return doc
     
     def _tokenize(self, doc):
         ""
         
-        # Custom tokenizer (based on sklearn's)
+        # Tokenizer taken from sklearn
         # TODO replace with nltk?
-        token_pattern = re.compile(r"""(?u)             # Unicode
-                                    [0-9]+[:|\.][0-9]+  # Match Bible/Quran quotes 
-                                                        # (e.g. 24:2 or 24.2)
-                                    |
-                                    \b\w\w+\b           # Match tokens with len>1""", 
-                                   re.X)
+        token_pattern = re.compile(r"(?u)\b\w\w+\b")
         return re.findall(token_pattern, doc)
     
     def _remove_stopwords(self, doc):
