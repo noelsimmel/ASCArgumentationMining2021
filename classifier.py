@@ -2,6 +2,7 @@ from collections import namedtuple
 import logging
 import numpy as np
 import pandas as pd
+import re
 from sklearn import metrics
 from sklearn import svm
 from sklearn.feature_extraction.text import CountVectorizer
@@ -23,13 +24,23 @@ class ASCClassifier:
 
         model_attributes = ["clf", "accuracy", "micro_f1", "cv_mean", "cv_std"]
         self.model = namedtuple("Model", model_attributes)
+        
+        # Custom tokenizer (based on sklearn's)
+        self.token_pattern = re.compile(r"""(?u)            # Unicode
+                                        [0-9]+[:|\.][0-9]+  # Match Bible/Quran quotes 
+                                                            # (e.g. 24:2 or 24.2)
+                                        |
+                                        \b\w\w+\b           # Match tokens with len>1""", 
+                                    re.X)
+        # Make callable
+        self.tokenizer = self.token_pattern.findall
 
     def train(self, train_file, target, test_model=False):
         ""
 
         # Import data
         train_data = self._read_file(train_file, target)
-        # smallest possible dataset for splitting => 8:3, classes [1, 0, -1]
+        # FIXME smallest possible dataset for splitting => 8:3, classes [1, 0, -1]
         # train_data = train_data[:11]
         X_test = y_test = None
         
@@ -37,16 +48,18 @@ class ASCClassifier:
         if test_model:
             # seed=21 gives atheism classes [0,-1,1,0,0]
             train_data, test_data = self._split_dataset(train_data, target, seed=21)
-            X_test = list(test_data["text"])
+            raw_test = list(test_data["text"])
+            X_test = self._preprocess(raw_test)
             y_test = list(test_data[target])
-        X_train = list(train_data["text"])
+        raw_train = list(train_data["text"])
+        X_train = self._preprocess(raw_train)
         y_train = list(train_data[target])
-            
+        
         logger.info(f"Training start")
         
         # Baseline classifier: Linear SVM with bag of words features
         baseline_clf = svm.SVC(kernel="linear", class_weight="balanced")
-        baseline_transformers = [("bow", CountVectorizer())]
+        baseline_transformers = [("bow", CountVectorizer(tokenizer=self.tokenizer))]
         baseline_ppl = self.build_pipeline(X_train, y_train, baseline_transformers, baseline_clf)
         # 10-fold cross validation on all available data
         cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
@@ -60,11 +73,13 @@ class ASCClassifier:
         
         
         # another classifier goes here ...
-        # transformers = [("bow", CountVectorizer()),
+        # transformers = [("bow", CountVectorizer(tokenizer=self.tokenizer)),
         #                 ("average", AverageWordLengthExtractor())]
-        # ppl = self.build_pipeline(X_train, y_train, transformers, baseline_clf)
+        # clf = svm.SVC(kernel="linear", class_weight="balanced")
+        # ppl = self.build_pipeline(X_train, y_train, transformers, clf)
         # # 10-fold cross validation on all available data
         # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        # print(cv_scores.mean(), cv_scores.std())
         
     def build_model(self, X_train, y_train, X_test, y_test, vectorizer, clf):
         ""
@@ -135,7 +150,8 @@ class ASCClassifier:
     def evaluate_cv(self, pipeline, X, y):
         ""
         
-        cv_scores = cross_val_score(pipeline, X, y, cv=10, scoring="f1_micro")
+        # FIXME cv=10
+        cv_scores = cross_val_score(pipeline, X, y, cv=3, scoring="f1_micro")
         logger.info(f"Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
         return cv_scores
     
@@ -162,6 +178,24 @@ class ASCClassifier:
                                        stratify=df[target])
         return train, test
     
+    def _preprocess(self, data):
+        ""
+        
+        data_preprocessed = []
+        for tweet in data:
+            # Remove "RT" (retweeted)
+            tweet = re.sub(r"RT ", " ", tweet)
+            # Replace @username with MENTION
+            tweet = re.sub(r"(\@)\S+", "MENTION", tweet)
+            # Replace #atheism with HASHTAG atheism
+            tweet = re.sub(r"(\#)", "HASHTAG ", tweet)
+            # Remove "'ll" (e.g. "I'll"), "won't" since sklearn tokenizer doesn't
+            # "won't" will be lemmatized as "won", which is semantically different
+            tweet = re.sub(r"'ll", "", tweet)
+            tweet = re.sub(r"won't", "wont", tweet)
+            data_preprocessed.append(tweet)
+        return data_preprocessed
+            
     def _extract_features(self, df):
         ""
 
@@ -178,7 +212,7 @@ if __name__ == '__main__':
     # Run automatically for different targets
     # targets = ["atheism", "supernatural", "christianity", "islam"]
     targets = ["atheism"]
-    testing = True
+    testing = False
     for t in targets:
         print(t.upper())
         clf.train(f, t, test_model=testing)
