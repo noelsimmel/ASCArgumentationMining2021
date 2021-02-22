@@ -1,8 +1,7 @@
 from collections import namedtuple
 import logging
 from nltk import pos_tag
-import numpy as np
-import pandas as pd
+from pandas import read_table
 from sklearn import metrics
 from sklearn import svm
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
@@ -81,51 +80,6 @@ class ASCClassifier:
         cv_scores = self.evaluate_cv(ppl, X_train, y_train)
         print(cv_scores.mean(), cv_scores.std())
         
-    def build_model(self, X_train, y_train, X_test, y_test, vectorizer, clf):
-        ""
-        
-        y_train = y_all = train_data[target]
-        
-        data = train_data.text
-        # data = pd.Series(["dies ist text eins", "das hier ist text text zwei"])
-        X_train = X_all = vectorizer.fit_transform(data)
-        
-        clf.fit(X_train, y_train)
-        accuracy = f1 = None
-        logger.info(f"Created {label} classifier {clf}")
-        
-        # doc idx (axis 0) of most frequent token: idx_0 = int(X_train.argmax()/X_train.shape[1])
-        # token idx (axis 1) of most frequent token: idx_1 = int(X_train.argmax(axis=1)[idx_0])
-        # freq of most freq token: X_train.max()
-        
-        # list with tuples (token, freq), ordered alphabetically:
-        # https://stackoverflow.com/a/16078639/2491761
-        # tc = zip(vectorizer.get_feature_names(), np.asarray(X_train.sum(axis=0)).ravel())
-        # # as df (idx is feature idx as in vectorizer.vocabulary_ !)
-        # df = pd.DataFrame(tc, columns=["token", "freq"])
-        # print(X_train.toarray())
-        # print(int(X_train.argmax(axis=1)[1]))
-        # print(vectorizer.vocabulary_)
-        # print(vectorizer.get_feature_names())
-        # return
-        
-        # If testing model, split into X and y
-        if not test_data.empty:
-            y_test = test_data[target]
-            X_test = vectorizer.transform(test_data.text)
-            # Evaluate
-            accuracy, f1 = self.evaluate_metrics(clf, X_test, y_test)
-            # Join train and test data for cross validation
-            all_data = pd.concat([train_data, test_data])
-            X_all = vectorizer.fit_transform(all_data.text)
-            y_all = all_data[label]
-        
-        # 10-fold cross validation on all available data
-        cv_scores = self.evaluate_cv(clf, X_all, y_all)
-        
-        # Return namedtuple of classifier and metrics
-        return self.model(clf, accuracy, f1, cv_scores.mean(), cv_scores.std())
-    
     def build_pipeline(self, X_train, y_train, transformers, clf):
         ""
         
@@ -163,7 +117,7 @@ class ASCClassifier:
     def _read_file(self, fn, target):
         ""
 
-        df = pd.read_table(fn)
+        df = read_table(fn)
         if target not in df.columns:
             raise ValueError(f"Target '{target}' is not a column in the data")
         logger.info(f"Read data from {fn}: {df.shape} dataframe")
@@ -175,7 +129,7 @@ class ASCClassifier:
 
         # Split in train and test sets (80:20)
         train, test = train_test_split(df, test_size=0.2, random_state=seed,
-                                       stratify=df[target])
+                                           stratify=df[target])
         return train, test
     
     def _pos_tagger(self, tokenized_data):
@@ -196,7 +150,7 @@ if __name__ == '__main__':
     #                "usa", "islam", "conservatism", "same_sex_marriage"]
     targets = ["atheism", "supernatural", "christianity", "islam"]
     # targets = ["atheism"]
-    testing = False
+    testing = True
     for t in targets:
         print(t.upper())
         clf.train(f, t, test_model=testing)
