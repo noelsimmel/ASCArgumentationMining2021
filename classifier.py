@@ -8,7 +8,7 @@ from sklearn import svm
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline, FeatureUnion
-from transformers import AverageWordLengthExtractor
+from transformers import AverageWordLengthExtractor, NamedEntityExtractor, AtheismPolarityExtractor
 from preprocessor import Preprocessor
 
 # Logging configuration
@@ -43,7 +43,7 @@ class ASCClassifier:
         
         # Split dataset if classifier should be tested
         if test_model:
-            # seed=21 gives atheism classes [0,-1,1,0,0]
+            # FIXME remove seed
             train_data, test_data = self._split_dataset(train_data, target, seed=21)
             X_test = list(test_data["text"])
             y_test = list(test_data[target])
@@ -74,7 +74,7 @@ class ASCClassifier:
         # another classifier goes here ...
         transformers = [("bow", countvec),
                         ("average", AverageWordLengthExtractor()),
-                        ("pos_tdidf", pos_tfidf)]
+                        ("similarity", AtheismPolarityExtractor())]
         clf = svm.SVC(kernel="linear", class_weight="balanced")
         ppl = self.build_pipeline(X_train, y_train, transformers, clf)
         # 10-fold cross validation on all available data
@@ -160,11 +160,6 @@ class ASCClassifier:
         logger.info(f"Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
         return cv_scores
     
-    def predict(self):
-        ""
-
-        pass
-    
     def _read_file(self, fn, target):
         ""
 
@@ -191,14 +186,16 @@ class ASCClassifier:
     
 
 if __name__ == '__main__':
-    # pd.set_option('display.max_columns', None)
     f = 'data/corpus.txt'
     clf = ASCClassifier()
     # clf.train(f, "atheism", test_model=False)
     
     # Run automatically for different targets
-    # targets = ["atheism", "supernatural", "christianity", "islam"]
-    targets = ["atheism"]
+    # targets_all = ["atheism", "secularism", "religious_freedom", "freethinking",
+    #                "no_evidence", "supernatural", "christianity", "afterlife", 
+    #                "usa", "islam", "conservatism", "same_sex_marriage"]
+    targets = ["atheism", "supernatural", "christianity", "islam"]
+    # targets = ["atheism"]
     testing = False
     for t in targets:
         print(t.upper())

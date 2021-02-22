@@ -26,7 +26,7 @@ class AverageWordLengthExtractor(BaseCustomTransformer):
 
     def make_feature(self, data):
         ""
-        
+        # print(data)
         # Uncomment for pandas version:
         # return [np.mean([len(token) for token in data.split()])]
         
@@ -56,3 +56,26 @@ class NamedEntityExtractor(BaseCustomTransformer):
         # Based on https://stackoverflow.com/a/952952
         flattened = [[item for sublist in tree for item in sublist] for tree in chunked]
         return [[sum(type(t) == tuple for t in doc)] for doc in flattened]
+    
+class AtheismPolarityExtractor(BaseCustomTransformer):
+    ""
+    
+    def __init__(self):
+        ""
+        
+        self.pro_atheism  = {"freethinker", "evidence", "atheist", "freethink", "evid"}
+        self.anti_atheism = {"teamjesus", "holy", "lord", "holi", "amen"}
+        
+    def make_feature(self, data):
+        ""
+        
+        return [[self._get_polarity(doc)] for doc in data]
+    
+    def _get_polarity(self, doc):
+        ""
+        
+        s = 0
+        for tok in doc:
+            if tok in self.pro_atheism: s += 1
+            elif tok in self.anti_atheism: s -= 1
+        return s 
