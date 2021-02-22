@@ -8,7 +8,8 @@ from sklearn import svm
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline, FeatureUnion
-from transformers import AverageWordLengthExtractor, NamedEntityExtractor, AtheismPolarityExtractor
+from transformers import AtheismPolarityExtractor, AverageWordLengthExtractor, \
+                         NamedEntityExtractor, TwitterFeaturesExtractor 
 from preprocessor import Preprocessor
 
 # Logging configuration
@@ -73,8 +74,7 @@ class ASCClassifier:
         
         # another classifier goes here ...
         transformers = [("bow", countvec),
-                        ("average", AverageWordLengthExtractor()),
-                        ("similarity", AtheismPolarityExtractor())]
+                        ("twitter", TwitterFeaturesExtractor())]
         clf = svm.SVC(kernel="linear", class_weight="balanced")
         ppl = self.build_pipeline(X_train, y_train, transformers, clf)
         # 10-fold cross validation on all available data
