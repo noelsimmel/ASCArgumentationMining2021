@@ -1,4 +1,5 @@
 from nltk.corpus import stopwords
+from nltk.stem.snowball import SnowballStemmer
 import re
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -17,7 +18,7 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         doc = self._clean(doc)
         doc = self._tokenize(doc)
         doc = self._remove_stopwords(doc)
-        # TODO lemmatization/stemming?
+        doc = self._stem(doc)
         return doc
     
     def _clean(self, doc):
@@ -51,3 +52,9 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         
         sw = set(stopwords.words("english"))
         return [tok for tok in doc if tok not in sw]
+    
+    def _stem(self, doc):
+        ""
+        
+        stemmer = SnowballStemmer("english")
+        return [stemmer.stem(tok) for tok in doc]
