@@ -61,7 +61,7 @@ class ASCClassifier:
         # # Baseline classifier: Linear SVM with bag of words features
         # baseline_clf = svm.SVC(kernel="linear", class_weight="balanced")
         # baseline_transformers = [("bow", countvec)]
-        # baseline_ppl = self.build_pipeline(X_train, y_train, baseline_transformers, baseline_clf)
+        # baseline_ppl = self._build_pipeline(X_train, y_train, baseline_transformers, baseline_clf)
         # # 10-fold cross validation on all available data
         # cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
         
@@ -81,28 +81,15 @@ class ASCClassifier:
                         ("twitter", TwitterFeaturesExtractor())]
         clf = svm.SVC(kernel="linear", class_weight="balanced")
         
-        ppl = self.build_pipeline(transformers, clf)
-        self.evaluate_gridsearch(ppl, X_train, y_train)
-        # pipeline.fit(X_train, y_train)
+        ppl = self._build_pipeline(transformers, clf)
+        ppl = self.evaluate_gridsearch(ppl, X_train, y_train)
+        # ppl.fit(X_train, y_train)
         # logger.info("Fitted pipeline to training data")
         # 10-fold cross validation on all available data
         # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
         # print(cv_scores.mean(), cv_scores.std())
+        return ppl
         
-    def build_pipeline(self, transformers, clf):
-        ""
-        
-        if transformers == []:
-            pipeline = Pipeline([("preprocessing", Preprocessor()),
-                                 ("clf", clf)])
-        else:
-            pipeline = Pipeline([("preprocessing", Preprocessor()),
-                                 ("features", FeatureUnion(transformers)), 
-                                 ("clf", clf)])
-        logger.info(f"Created pipeline: {pipeline.get_params()}")
-        
-        return pipeline
-    
     def evaluate_metrics(self, pipeline, X_test, y_test):
         ""
 
@@ -123,13 +110,14 @@ class ASCClassifier:
     def evaluate_gridsearch(self, pipeline, X, y):
         ""
         
-        transformers = pipeline["features"].transformer_list
-        search_space = {#"features__bow__lowercase": [True, False]},
-                        "features__transformer_list": [transformers, transformers[:1], transformers[:2], transformers[:3],
-                                                       transformers[:4]]}
+        features = pipeline["features"].transformer_list
+        features_search_space = [features[:i] for i in range(1,len(features)+1)]
+        search_space = {#"features__bow__lowercase": [True, False],
+                        "features__transformer_list": features_search_space}
         
         # FIXME cv=10?
-        grid_search = GridSearchCV(pipeline, search_space, scoring="f1_micro", cv=2, verbose=1)
+        # FIXME verbose=0
+        grid_search = GridSearchCV(pipeline, search_space, scoring="f1_micro", cv=2, verbose=2)
         t0 = time()
         grid_search.fit(X, y)
         print(f"Grid search done in {(time()-t0):.3f}")
@@ -166,6 +154,20 @@ class ASCClassifier:
         
         # Not included since it raises cv std
         return [token+"/"+tag for token, tag in pos_tag(tokenized_data)]
+    
+    def _build_pipeline(self, transformers, clf):
+        ""
+        
+        if transformers == []:
+            pipeline = Pipeline([("preprocessing", Preprocessor()),
+                                 ("clf", clf)])
+        else:
+            pipeline = Pipeline([("preprocessing", Preprocessor()),
+                                 ("features", FeatureUnion(transformers)), 
+                                 ("clf", clf)])
+        logger.info(f"Created pipeline: {pipeline.get_params()}")
+        
+        return pipeline
     
 
 if __name__ == '__main__':
