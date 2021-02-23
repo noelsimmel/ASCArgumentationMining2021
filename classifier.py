@@ -46,7 +46,8 @@ class ASCClassifier:
         # Split dataset if classifier should be tested
         if test_model:
             # FIXME remove seed
-            train_data, test_data = self._split_dataset(train_data, target, seed=21)
+            train_data, test_data = train_test_split(train_data, test_size=0.2, 
+                                                     stratify=train_data[target], random_state=21)
             X_test = list(test_data["text"])
             y_test = list(test_data[target])
         X_train = list(train_data["text"])
@@ -58,7 +59,7 @@ class ASCClassifier:
         # TF-IDF on POS tags
         pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
         
-        baseline_model = self.baseline_model(X_train, y_train, X_test, y_test)
+        baseline_model = self.train_baseline_model(X_train, y_train, X_test, y_test)
         
         # another classifier goes here ...
         # transformers = [("bow", countvec),
@@ -78,7 +79,7 @@ class ASCClassifier:
         # # print(cv_scores.mean(), cv_scores.std())
         # return ppl
         
-    def baseline_model(self, X_train, y_train, X_test=None, y_test=None):
+    def train_baseline_model(self, X_train, y_train, X_test=None, y_test=None):
         ""
         
         logger.info("Training baseline model...")
@@ -153,12 +154,6 @@ class ASCClassifier:
         # Drop all columns except id, text, atheism stance
         return df[["id", "text", target]]
 
-    def _split_dataset(self, df, target, seed=None):
-        ""
-
-        # Split in train and test sets (80:20)
-        train, test = train_test_split(df, test_size=0.2, random_state=seed,
-                                           stratify=df[target])
         return train, test
     
     def _pos_tagger(self, tokenized_data):
@@ -184,7 +179,6 @@ class ASCClassifier:
 if __name__ == '__main__':
     f = 'data/corpus.txt'
     clf = ASCClassifier()
-    # clf.train(f, "atheism", test_model=False)
     
     # Run automatically for different targets
     # targets_all = ["atheism", "secularism", "religious_freedom", "freethinking",
