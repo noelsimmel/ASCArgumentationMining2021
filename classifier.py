@@ -58,38 +58,50 @@ class ASCClassifier:
         # TF-IDF on POS tags
         pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
         
-        # # Baseline classifier: Linear SVM with bag of words features
-        # baseline_clf = svm.SVC(kernel="linear", class_weight="balanced")
-        # baseline_transformers = [("bow", countvec)]
-        # baseline_ppl = self._build_pipeline(X_train, y_train, baseline_transformers, baseline_clf)
-        # # 10-fold cross validation on all available data
-        # cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
-        
-        # # If testing model, evaluate
-        # accuracy = f1 = None
-        # if X_test and y_test:
-        #     accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
-        # baseline_model = self.model(baseline_ppl, accuracy, f1, cv_scores.mean(), cv_scores.std())
-        # print(baseline_model)
-        
+        baseline_model = self.baseline_model(X_train, y_train, X_test, y_test)
         
         # another classifier goes here ...
-        transformers = [("bow", countvec),
-                        ("polarity", AtheismPolarityExtractor()),
-                        ("length", AverageWordLengthExtractor()),
-                        ("ner", NamedEntityExtractor()),
-                        ("twitter", TwitterFeaturesExtractor())]
-        clf = svm.SVC(kernel="linear", class_weight="balanced")
+        # transformers = [("bow", countvec),
+        #                 ("pos_tfidf", pos_tfidf),
+        #                 ("polarity", AtheismPolarityExtractor()),
+        #                 ("length", AverageWordLengthExtractor()),
+        #                 ("ner", NamedEntityExtractor()),
+        #                 ("twitter", TwitterFeaturesExtractor())]
+        # clf = svm.SVC(kernel="linear", class_weight="balanced")
         
-        ppl = self._build_pipeline(transformers, clf)
-        ppl = self.evaluate_gridsearch(ppl, X_train, y_train)
-        # ppl.fit(X_train, y_train)
-        # logger.info("Fitted pipeline to training data")
-        # 10-fold cross validation on all available data
-        # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
-        # print(cv_scores.mean(), cv_scores.std())
-        return ppl
+        # ppl = self._build_pipeline(clf, transformers)
+        # ppl = self.evaluate_gridsearch(ppl, X_train, y_train)
+        # # ppl.fit(X_train, y_train)
+        # # logger.info("Fitted pipeline to training data")
+        # # 10-fold cross validation on all available data
+        # # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        # # print(cv_scores.mean(), cv_scores.std())
+        # return ppl
         
+    def baseline_model(self, X_train, y_train, X_test=None, y_test=None):
+        ""
+        
+        logger.info("Training baseline model...")
+        # Baseline classifier: Linear SVM with bag of words features
+        baseline_clf = svm.SVC(kernel="linear", class_weight="balanced")
+        # Baseline feature: Simple bag of words
+        baseline_transformer = [("bow", CountVectorizer())]
+        # Build and train model
+        baseline_ppl = self._build_pipeline(baseline_clf, baseline_transformer, preprocessing=False)
+        baseline_ppl.fit(X_train, y_train)
+        logger.info(f"Baseline model: {baseline_ppl}")
+        
+        # Cross validation
+        cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
+        
+        # If testing model, evaluate
+        accuracy = f1 = None
+        if X_test and y_test:
+            accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
+        baseline_model = self.model(baseline_ppl, accuracy, f1, cv_scores.mean(), cv_scores.std())
+        logger.info("... Training baseline model finished")
+        return baseline_model
+    
     def evaluate_metrics(self, pipeline, X_test, y_test):
         ""
 
@@ -99,12 +111,12 @@ class ASCClassifier:
         logger.info(f"Accuracy on test set {accuracy:.3f}, micro f1 {f1:.3f}")
         return accuracy, f1
     
-    def evaluate_cv(self, pipeline, X, y):
+    def evaluate_cv(self, pipeline, X, y, k=3):
         ""
         
-        # FIXME cv=10
-        cv_scores = cross_val_score(pipeline, X, y, cv=3, scoring="f1_micro")
-        logger.info(f"Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
+        # FIXME k=10
+        cv_scores = cross_val_score(pipeline, X, y, cv=k, scoring="f1_micro")
+        logger.info(f"{k}-fold Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
         return cv_scores
     
     def evaluate_gridsearch(self, pipeline, X, y):
@@ -155,19 +167,18 @@ class ASCClassifier:
         # Not included since it raises cv std
         return [token+"/"+tag for token, tag in pos_tag(tokenized_data)]
     
-    def _build_pipeline(self, transformers, clf):
+    def _build_pipeline(self, clf, transformers, preprocessing=True):
         ""
         
-        if transformers == []:
-            pipeline = Pipeline([("preprocessing", Preprocessor()),
-                                 ("clf", clf)])
-        else:
-            pipeline = Pipeline([("preprocessing", Preprocessor()),
-                                 ("features", FeatureUnion(transformers)), 
-                                 ("clf", clf)])
-        logger.info(f"Created pipeline: {pipeline.get_params()}")
+        if not transformers:
+            raise TypeError("Need transformer to build a pipeline")
         
-        return pipeline
+        if preprocessing:
+            return Pipeline([("preprocessing", Preprocessor()),
+                             ("features", FeatureUnion(transformers)), 
+                             ("clf", clf)])
+        return Pipeline([("features", FeatureUnion(transformers)), 
+                         ("clf", clf)])
     
 
 if __name__ == '__main__':
