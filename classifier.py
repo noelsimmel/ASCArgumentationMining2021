@@ -34,6 +34,21 @@ class ASCClassifier:
         model_attributes = ["clf", "accuracy", "micro_f1", "cv_mean", "cv_std"]
         self.model = namedtuple("Model", model_attributes)
         
+        # Use this when using custom preprocessing/tokenizing
+        countvec = CountVectorizer(tokenizer=dummy, preprocessor=dummy)
+        # TF-IDF on POS tags
+        pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
+        # List of available transformers/features
+        self.transformers = [
+                                ("bow", countvec),
+                                ("pos_tfidf", pos_tfidf),
+                                ("polarity", AtheismPolarityExtractor()),
+                                ("length", AverageWordLengthExtractor()),
+                                ("ner", NamedEntityExtractor()),
+                                ("twitter", TwitterFeaturesExtractor())
+                            ]
+        self.estimator = svm.SVC(kernel="linear", class_weight="balanced")
+        
     def train(self, train_file, target, test_model=False):
         ""
 
@@ -54,30 +69,16 @@ class ASCClassifier:
         y_train = list(train_data[target])
         
         logger.info(f"Training start")
-        # Use this when using custom preprocessing/tokenizing
-        countvec = CountVectorizer(tokenizer=dummy, preprocessor=dummy)
-        # TF-IDF on POS tags
-        pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
         
         baseline_model = self.train_baseline_model(X_train, y_train, X_test, y_test)
         
-        # another classifier goes here ...
-        # transformers = [("bow", countvec),
-        #                 ("pos_tfidf", pos_tfidf),
-        #                 ("polarity", AtheismPolarityExtractor()),
-        #                 ("length", AverageWordLengthExtractor()),
-        #                 ("ner", NamedEntityExtractor()),
-        #                 ("twitter", TwitterFeaturesExtractor())]
-        # clf = svm.SVC(kernel="linear", class_weight="balanced")
-        
-        # ppl = self._build_pipeline(clf, transformers)
-        # ppl = self.evaluate_gridsearch(ppl, X_train, y_train)
-        # # ppl.fit(X_train, y_train)
-        # # logger.info("Fitted pipeline to training data")
-        # # 10-fold cross validation on all available data
-        # # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
-        # # print(cv_scores.mean(), cv_scores.std())
-        # return ppl
+        ppl = self._build_pipeline(self.estimator, self.transformers)
+        ppl = self.evaluate_gridsearch(ppl, X_train, y_train)
+        ppl.fit(X_train, y_train)
+        # 10-fold cross validation on all available data
+        cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        print(cv_scores.mean(), cv_scores.std())
+        return ppl
         
     def train_baseline_model(self, X_train, y_train, X_test=None, y_test=None):
         ""
@@ -159,8 +160,8 @@ class ASCClassifier:
     def _pos_tagger(self, tokenized_data):
         ""
         
-        # Not included since it raises cv std
-        return [token+"/"+tag for token, tag in pos_tag(tokenized_data)]
+        # https://stackoverflow.com/a/33305005
+        return tokenized_data + [tag for _, tag in pos_tag(tokenized_data)]
     
     def _build_pipeline(self, clf, transformers, preprocessing=True):
         ""
