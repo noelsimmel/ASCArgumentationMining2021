@@ -86,16 +86,12 @@ class ASCClassifier:
 
         # Import data
         train_data = self._read_file(train_file, target)
+        X_train = list(train_data["text"])
+        y_train = list(train_data[target])
         
         # Split dataset if classifier should be tested
         if test_model:
-            # FIXME remove seed
-            train_data, test_data = train_test_split(train_data, test_size=0.2, 
-                                                     stratify=train_data[target], random_state=21)
-            X_test = list(test_data["text"])
-            y_test = list(test_data[target])
-        X_train = list(train_data["text"])
-        y_train = list(train_data[target])
+            X_train, y_train, X_test, y_test = self._split_dataset(train_data, target)
         
         logger.info(f"Training start...")
         # Build and fit model
@@ -104,7 +100,7 @@ class ASCClassifier:
         logger.info("...Training finished")
         
         # Cross-validate
-        cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
         
         # Evaluate model on test set
         if test_model:
@@ -113,7 +109,7 @@ class ASCClassifier:
         self.model = ppl
         return ppl
         
-    def train_baseline_model(self, X_train, y_train, X_test=None, y_test=None):
+    def train_baseline_model(self, train_file, target, test_model=False):
         """Trains a baseline model as described in Wojatzki & Zesch (2016): 
         Linear SVM with word and character ngram features.
         
@@ -130,6 +126,15 @@ class ASCClassifier:
         """
         
         logger.info("Training baseline model...")
+        # Import data
+        train_data = self._read_file(train_file, target)
+        X_train = list(train_data["text"])
+        y_train = list(train_data[target])
+        
+        # Split dataset if classifier should be tested
+        if test_model:
+            X_train, y_train, X_test, y_test = self._split_dataset(train_data, target)
+            
         # Baseline classifier: Linear SVM
         baseline_clf = svm.SVC(kernel="linear")
         # Baseline features: Simple word/character n-grams
@@ -142,10 +147,9 @@ class ASCClassifier:
         baseline_ppl.fit(X_train, y_train)
         
         # Cross-validate
-        cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
+        # cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
         
         # If testing model, evaluate
-        accuracy = f1 = None
         if X_test and y_test:
             accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
         logger.info("... Training baseline model finished")
@@ -294,6 +298,26 @@ class ASCClassifier:
         # Drop all columns except id, text, atheism stance
         return df[["id", "text", target]]
     
+    def _split_dataset(self, data, target):
+        """Split data set in train and test sets.
+
+        Args:
+            data (pandas.DataFrame): Complete dataset. Needs columns "text" and target.
+            target (string): Classification target/column name, e.g. "atheism".
+
+        Returns:
+            list, list, list, list: Train and test sets.
+        """
+        
+        # FIXME remove seed
+        train_data, test_data = train_test_split(data, test_size=0.2, 
+                                                 stratify=data[target], random_state=21)
+        X_train = list(train_data["text"])
+        y_train = list(train_data[target])
+        X_test = list(test_data["text"])
+        y_test = list(test_data[target])
+        return X_train, y_train, X_test, y_test
+    
     def _pos_tagger(self, tokenized_data):
         """Uses nltk.pos_tag() to tag a tokenized document.
 
@@ -351,5 +375,5 @@ if __name__ == "__main__":
     testing = True
     for t in targets:
         print(t.upper())
-        model = clf.train(f, t, test_model=testing)
+        model = clf.train_baseline_model(f, t, test_model=testing)
         print() 
