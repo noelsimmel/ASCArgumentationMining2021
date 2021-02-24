@@ -1,5 +1,5 @@
 # classifier.py
-# The classifier
+# Classification. Using Python 3.7.3.
 
 import logging
 from time import time
@@ -68,8 +68,11 @@ class ASCClassifier:
         # Classifier
         self.estimator = svm.SVC(kernel="linear", class_weight="balanced")
         
+        # The trained model (= fitted pipeline) (result of self.train())
+        self.model = None
+        
     def train(self, train_file, target, test_model=False):
-        """Trains (and tests) a model for one class.
+        """Trains (and tests) a model for one class. Saves the model as self.model.
 
         Args:
             train_file (string): Path to the corpus file.
@@ -82,7 +85,7 @@ class ASCClassifier:
         """
 
         # Import data
-        train_data = self._read_file(train_file, target)namedtu
+        train_data = self._read_file(train_file, target)
         
         # Split dataset if classifier should be tested
         if test_model:
@@ -95,6 +98,7 @@ class ASCClassifier:
         y_train = list(train_data[target])
         
         logger.info(f"Training start...")
+        # Build and fit model
         ppl = self._build_pipeline(self.estimator, self.transformers)
         ppl.fit(X_train, y_train)
         logger.info("...Training finished")
@@ -105,6 +109,8 @@ class ASCClassifier:
         # Evaluate model on test set
         if test_model:
             accuracy, f1 = self.evaluate_metrics(ppl, X_test, y_test)
+            
+        self.model = ppl
         return ppl
         
     def train_baseline_model(self, X_train, y_train, X_test=None, y_test=None):
@@ -135,7 +141,7 @@ class ASCClassifier:
                                             preprocessing=False)
         baseline_ppl.fit(X_train, y_train)
         
-        # Cross validation
+        # Cross-validate
         cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
         
         # If testing model, evaluate
@@ -211,23 +217,44 @@ class ASCClassifier:
         
         logger.info(f"Grid search done in {(time()-time0):.3f} seconds")
         logger.info(f"Best micro f1 score: {grid_search.best_score_}")
-        logger.info("Best estimator: ", grid_search.best_estimator_)) 
+        logger.info("Best estimator: ", grid_search.best_estimator_)
         
         return grid_search.best_estimator_
     
-    def set_transformers(self, transformers):
+    def predict(self, data, fn=None):
         ""
         
-        self.transformers = transformers
+        if not self.model:
+            raise TypeError("Model is not fitted yet. \
+                              Call train() on training data first \
+                              or load a pickled model with load_model().")
+            
+        predictions = self.model.predict(data)
+        assert len(data) == len(predictions)
+        if fn: 
+            with open(fn, mode="w+") as f:
+                f.write("ID\tPREDICTION\tTEXT")
+                for idx, pred in enumerate(predictions):
+                    f.write(f"{str(idx)}\t{str(pred)}\t{data[idx]}\n")
+        return predictions
     
-    def save_model(self, estimator, fn):
+    def save_model(self, fn, estimator=None):
         """Pickles a model.
 
         Args:
-            estimator (sklearn.pipeline.Pipeline): The estimator/pipeline to pickle.
-            fn (string): Path where it should be saved.
+            fn (string): Path where it should be saved (e.g. .pkl file).
+            estimator (sklearn.pipeline.Pipeline, optional): The estimator/pipeline 
+            to pickle. Saves self.model by default.
+
+        Raises:
+            TypeError: If no estimator is supplied self.model=None.
         """
         
+        if not estimator:
+            estimator = self.model
+        if not estimator:
+            raise TypeError("Nothing to pickle. \
+                             Please supply an estimator or train self.model.")
         joblib.dump(estimator, fn, compress = 1)
         logger.info(f"Dumped model in {fn}")
         
@@ -242,7 +269,9 @@ class ASCClassifier:
         """
         
         logger.info(f"Loaded model from {fn}")
-        return joblib.load(fn)
+        model = joblib.load(fn)
+        self.model = model
+        return model
     
     def _read_file(self, fn, target):
         """Uses pandas to read and validate the input data from a file.
