@@ -106,6 +106,8 @@ class ASCClassifier:
         if test_model:
             accuracy, f1 = self.evaluate_metrics(ppl, X_test, y_test)
             
+        # Fit on all data
+        ppl.fit(X_train+X_test, y_train+y_test)
         self.model = ppl
         return ppl
         
@@ -153,6 +155,9 @@ class ASCClassifier:
         if X_test and y_test:
             accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
         logger.info("... Training baseline model finished")
+        
+        # Fit on all data
+        baseline_ppl.fit(X_train+X_test, y_train+y_test)
         return baseline_ppl
     
     def evaluate_metrics(self, pipeline, X_test, y_test):
@@ -263,7 +268,7 @@ class ASCClassifier:
         logger.info(f"Dumped model in {fn}")
         
     def load_model(self, fn):
-        """Loads a pickled model.
+        """Loads a pickled model and saves it in self.model.
 
         Args:
             fn (string): Path to the pickle jar.
@@ -375,5 +380,5 @@ if __name__ == "__main__":
     testing = True
     for t in targets:
         print(t.upper())
-        model = clf.train_baseline_model(f, t, test_model=testing)
+        model = clf.train(f, t, test_model=testing)
         print() 
