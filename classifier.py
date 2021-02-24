@@ -285,7 +285,22 @@ class ASCClassifier:
         return tokenized_data + [tag for _, tag in pos_tag(tokenized_data)]
     
     def _build_pipeline(self, clf, transformers, preprocessing=True):
-        ""
+        """Builds an sklearn pipeline consisting of preprocessor, transformers, 
+        and an estimator. Does NOT perform fit or transform.
+
+        Args:
+            clf (estimator): An sklearn estimator such as sklearn.svm.SVC.  
+            transformers (list): List of transformers, see constructor.
+            preprocessing (bool, optional): Whether the pipeline should include 
+            preprocessing from the Preprocessor class. Defaults to True.
+
+        Raises:
+            TypeError: If no transformers are supplied. (Data needs to be 
+            transformed to numeric values before classification)
+
+        Returns:
+            sklearn.pipeline.Pipeline: The unfitted pipeline.
+        """
         
         if not transformers:
             raise TypeError("Need transformer to build a pipeline")
