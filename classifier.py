@@ -71,7 +71,7 @@ class ASCClassifier:
         # The trained model (= fitted pipeline) (result of self.train())
         self.model = None
         
-    def train(self, train_file, target, test_model=False):
+    def train(self, train_file, target, test_model=False, gridsearch=False):
         """Trains (and tests) a model for one class. Saves the model as self.model.
 
         Args:
@@ -85,14 +85,7 @@ class ASCClassifier:
         """
 
         # Import data
-        train_data = self._read_file(train_file, target)
-        X_train = list(train_data["text"])
-        y_train = list(train_data[target])
-        
-        # Split dataset if classifier should be tested
-        if test_model:
-            X_train, y_train, X_test, y_test = self._split_dataset(train_data, target)
-        
+        X_train, y_train, X_test, y_test = self._split_dataset(train_file, target, test_model)
         logger.info(f"Training start...")
         # Build and fit model
         ppl = self._build_pipeline(self.estimator, self.transformers)
@@ -100,14 +93,22 @@ class ASCClassifier:
         logger.info("...Training finished")
         
         # Cross-validate
-        # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        
+        # Grid search (warning: may take a long time if using many transformers)
+        if gridsearch:
+            gs_ppl = self.gridsearch(ppl, X_train, y_train)
+            if X_test and y_test:
+                logger.info("Evaluating grid search model:")
+                self.evaluate_metrics(gs_ppl, X_test, y_test)
+                logger.info("Evaluating actual model:")
         
         # Evaluate model on test set
-        if test_model:
-            accuracy, f1 = self.evaluate_metrics(ppl, X_test, y_test)
+        if X_test and y_test:
+            self.evaluate_metrics(ppl, X_test, y_test)
+            # Re-fit on all data
+            ppl.fit(X_train + X_test, y_train + y_test)
             
-        # Fit on all data
-        ppl.fit(X_train+X_test, y_train+y_test)
         self.model = ppl
         return ppl
         
@@ -129,13 +130,7 @@ class ASCClassifier:
         
         logger.info("Training baseline model...")
         # Import data
-        train_data = self._read_file(train_file, target)
-        X_train = list(train_data["text"])
-        y_train = list(train_data[target])
-        
-        # Split dataset if classifier should be tested
-        if test_model:
-            X_train, y_train, X_test, y_test = self._split_dataset(train_data, target)
+        X_train, y_train, X_test, y_test = self._split_dataset(train_file, target, test_model)
             
         # Baseline classifier: Linear SVM
         baseline_clf = svm.SVC(kernel="linear")
@@ -149,15 +144,15 @@ class ASCClassifier:
         baseline_ppl.fit(X_train, y_train)
         
         # Cross-validate
-        # cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
+        cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
         
         # If testing model, evaluate
         if X_test and y_test:
             accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
+            # Re-fit on all data
+            baseline_ppl.fit(X_train + X_test, y_train + y_test)
+            
         logger.info("... Training baseline model finished")
-        
-        # Fit on all data
-        baseline_ppl.fit(X_train+X_test, y_train+y_test)
         return baseline_ppl
     
     def evaluate_metrics(self, pipeline, X_test, y_test):
@@ -195,7 +190,7 @@ class ASCClassifier:
         logger.info(f"{k}-fold Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
         return cv_scores
     
-    def gridsearch(self, pipeline, X, y, k=10):
+    def gridsearch(self, pipeline, X, y, k=5):
         """Implements sklearn grid search to find the best model given the 
         parameters in the constructor.
         
@@ -203,18 +198,20 @@ class ASCClassifier:
             pipeline (sklearn.pipeline.Pipeline): Pipeline to be searched.
             X (list): List of document strings.
             y (list): List of class labels, e.g. -1/0/1.
-            k (int, optional): Number of folds. Defaults to 10.
+            k (int, optional): Number of folds. Defaults to 5.
 
         Returns:
             sklearn.pipeline.Pipeline: The best performing pipeline.
         """
         
+        logger.info("Grid search...")
         # Features search space implements forward elimination:
         # Train + evaluate on one transformer, then two, etc.
         features = pipeline["features"].transformer_list
         features_search_space = [features[:i] for i in range(1,len(features)+1)]
         # Merge constructor search space + features search space
-        search_space = {**self.search_space, **{"features__transformer_list": features_search_space}}
+        search_space = {**self.search_space, 
+                        **{"features__transformer_list": features_search_space}}
         
         if (len(features_search_space) > 3 or len(search_space) > 3) and k > 5:
             print(f"WARNING: Fitting {k} folds on more than 3 parameter candidates. \
@@ -224,9 +221,10 @@ class ASCClassifier:
         grid_search = GridSearchCV(pipeline, search_space, scoring="f1_micro", cv=k)
         grid_search.fit(X, y)
         
-        logger.info(f"Grid search done in {(time()-time0):.3f} seconds")
+        logger.info(f"... Grid search finished in {(time()-time0):.3f} seconds")
         logger.info(f"Best micro f1 score: {grid_search.best_score_}")
-        logger.info("Best estimator: ", grid_search.best_estimator_)
+        logger.info("Best estimator:")
+        logger.info(grid_search.best_estimator_)
         
         return grid_search.best_estimator_
     
@@ -303,24 +301,34 @@ class ASCClassifier:
         # Drop all columns except id, text, atheism stance
         return df[["id", "text", target]]
     
-    def _split_dataset(self, data, target):
-        """Split data set in train and test sets.
+    def _split_dataset(self, fn, target, test_model=False):
+        """Read file and make X and y datasets. Also split in train/test set 
+        if desired.
 
         Args:
-            data (pandas.DataFrame): Complete dataset. Needs columns "text" and target.
+            fn (string): Path to input data.
             target (string): Classification target/column name, e.g. "atheism".
+            test_model (bool, optional): Whether to make a train/test split. 
+            Defaults to false.
 
         Returns:
-            list, list, list, list: Train and test sets.
+            list, list, list, list: Train and test sets. Test set may be None.
         """
         
-        # FIXME remove seed
-        train_data, test_data = train_test_split(data, test_size=0.2, 
-                                                 stratify=data[target], random_state=21)
+        train_data = self._read_file(fn, target)
         X_train = list(train_data["text"])
         y_train = list(train_data[target])
-        X_test = list(test_data["text"])
-        y_test = list(test_data[target])
+        X_test = y_test = None
+        
+        # Split dataset if classifier should be tested
+        if test_model:
+            # FIXME remove seed
+            train_data, test_data = train_test_split(train_data, test_size=0.2, 
+                                                     stratify=train_data[target], random_state=21)
+            X_train = list(train_data["text"])
+            y_train = list(train_data[target])
+            X_test = list(test_data["text"])
+            y_test = list(test_data[target])
         return X_train, y_train, X_test, y_test
     
     def _pos_tagger(self, tokenized_data):
@@ -380,5 +388,5 @@ if __name__ == "__main__":
     testing = True
     for t in targets:
         print(t.upper())
-        model = clf.train(f, t, test_model=testing)
+        model = clf.train(f, t, test_model=testing, gridsearch=True)
         print() 
