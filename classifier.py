@@ -39,8 +39,8 @@ class ASCClassifier:
     def __init__(self):
         """Constructor.
         
-        Implements list of possible transformers (feature extractors) and 
-        estimators (classifiers). (Un)comment to exclude/include in training.
+        Implements list of possible transformers (feature extractors), estimators 
+        (classifiers) and parameters. (Un)comment to exclude/include in training.
         """
 
         logger.info("\n")
@@ -48,18 +48,28 @@ class ASCClassifier:
         self.model = namedtuple("Model", model_attributes)
         
         # Use this when using custom preprocessing/tokenizing
-        countvec = CountVectorizer(tokenizer=dummy, preprocessor=dummy)
+        bow = CountVectorizer(tokenizer=dummy, preprocessor=dummy)
         # TF-IDF on POS tags
         pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
+        
         # List of available transformers/features
         self.transformers = [
-                                ("bow", countvec),
+                                ("bow", bow),
                                 ("pos_tfidf", pos_tfidf),
                                 ("polarity", AtheismPolarityExtractor()),
                                 ("length", AverageWordLengthExtractor()),
                                 ("ner", NamedEntityExtractor()),
                                 ("twitter", TwitterFeaturesExtractor())
                             ]
+        
+        # Parameters. Only concern BOW/CountVectorizer
+        self.search_space = {
+                             "features__bow__ngram_range": [(1,1), (1,2), (1,3)],
+                             "features__bow__min_df": [0.01, 0.05, 0.1],
+                             "features__bow__max_df": [0.75, 0.9, 1.0]
+                             }
+        
+        # Classifier
         self.estimator = svm.SVC(kernel="linear", class_weight="balanced")
         
     def train(self, train_file, target, test_model=False):
@@ -80,7 +90,7 @@ class ASCClassifier:
         # Import data
         train_data = self._read_file(train_file, target)
         # FIXME smallest possible dataset for splitting => 8:3, classes [1, 0, -1]
-        # train_data = train_data[:11]
+        train_data = train_data[:11]
         X_test = y_test = None
         
         # Split dataset if classifier should be tested
@@ -95,10 +105,10 @@ class ASCClassifier:
         
         logger.info(f"Training start")
         
-        baseline_model = self.train_baseline_model(X_train, y_train, X_test, y_test)
+        # baseline_model = self.train_baseline_model(X_train, y_train, X_test, y_test)
         
         ppl = self._build_pipeline(self.estimator, self.transformers)
-        ppl = self.evaluate_gridsearch(ppl, X_train, y_train)
+        ppl = self.evaluate_gridsearch(ppl, X_train, y_train, k=3)
         # ppl.fit(X_train, y_train)
         # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
         # print(cv_scores.mean(), cv_scores.std())
@@ -106,12 +116,12 @@ class ASCClassifier:
         
     def train_baseline_model(self, X_train, y_train, X_test=None, y_test=None):
         """Trains a baseline model as described in Wojatzki & Zesch (2016): 
-        Linear SVM with word and character bag of words features. #TODO
+        Linear SVM with word and character bag of words features.
         
         Evalutes the model if test data supplied.
 
         Args:
-            X_train (list): List of lists of document strings. #FIXME
+            X_train (list): List of document strings.
             y_train (list): List of class labels, e.g. -1/0/1.
             X_test (list optional): See X_train. Defaults to None.
             y_test (list, optional): See y_train. Defaults to None.
@@ -149,7 +159,7 @@ class ASCClassifier:
 
         Args:
             pipeline (sklearn estimator|pipeline): A fitted model.
-            X_test (list): List of document strings. #FIXME
+            X_test (list): List of document strings.
             y_test (list): List of class labels, e.g. -1/0/1.
 
         Returns:
@@ -167,7 +177,7 @@ class ASCClassifier:
 
         Args:
             pipeline (sklearn estimator|pipeline): A fitted or unfitted model.
-            X (list): List of document strings. #FIXME
+            X (list): List of document strings.
             y (list): List of class labels, e.g. -1/0/1.
             k (int, optional): Number of folds. Defaults to 10.
 
@@ -175,7 +185,6 @@ class ASCClassifier:
             ndarray: Output of sklearn.model_selection.cross_val_score()
         """
         
-        # FIXME k=10
         cv_scores = cross_val_score(pipeline, X, y, cv=k, scoring="f1_micro")
         logger.info(f"{k}-fold Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
         return cv_scores
@@ -185,41 +194,35 @@ class ASCClassifier:
         parameters in the constructor.
         
         Args:
-            pipeline (sklearn Pipeline): Pipeline to be searched.
-            X (list): List of document strings. #FIXME
+            pipeline (sklearn.pipeline.Pipeline): Pipeline to be searched.
+            X (list): List of document strings.
             y (list): List of class labels, e.g. -1/0/1.
             k (int, optional): Number of folds. Defaults to 10.
 
         Returns:
             # FIXME
-            sklearn Pipeline: The best pipeline.
+            sklearn.pipeline.Pipeline: The best performing pipeline.
         """
         
+        # Features search space implements forward elimination:
+        # Train + evaluate on one transformer, then two, etc.
         features = pipeline["features"].transformer_list
         features_search_space = [features[:i] for i in range(1,len(features)+1)]
-        search_space = {"features__bow__ngram_range": [(1,1), (1,2), (1,3)],
-                        "features__bow__min_df": [0.01, 0.05, 0.1],
-                        "features__bow__max_df": [0.75, 0.9, 1.0],
-                        "features__transformer_list": features_search_space}
+        # Merge constructor search space + features search space
+        search_space = {**self.search_space, **{"features__transformer_list": features_search_space}}
         
-        if len(features_search_space) > 3 or len(search_space) > 3 or k > 3:
+        if (len(features_search_space) > 3 or len(search_space) > 3) and k > 5:
             print(f"WARNING: Fitting {k} folds on more than 3 parameter candidates. \
-                    This could take a long time.")
-        # FIXME cv=10?
-        # FIXME verbose=0
-        grid_search = GridSearchCV(pipeline, search_space, scoring="f1_micro", cv=k, verbose=2)
-        t0 = time()
-        grid_search.fit(X, y)
-        # TODO logging
-        print(f"Grid search done in {(time()-t0):.3f}")
-        print()
-
-        print(f"Best micro f1 score: {grid_search.best_score_:.3f}")
-        print("Best parameters:")
-        best_params = grid_search.best_estimator_.get_params()
-        for param_name in sorted(search_space.keys()):
-            print("\t%s: %r" % (param_name, best_params[param_name]))
+                             This could take a long time.")
             
+        time0 = time()
+        grid_search = GridSearchCV(pipeline, search_space, scoring="f1_micro", cv=k)
+        grid_search.fit(X, y)
+        
+        logger.info(f"Grid search done in {(time()-time0):.3f} seconds")
+        logger.info(f"Best micro f1 score: {grid_search.best_score_}")
+        logger.info("Best estimator: ", grid_search.best_estimator_)) 
+        
         # FIXME
         return grid_search.best_estimator_
     
@@ -264,7 +267,7 @@ class ASCClassifier:
         df = read_table(fn)
         if target not in df.columns:
             raise ValueError(f"Target '{target}' is not a column in the data")
-        logger.info(f"Read data from {fn}: {df.shape} dataframe")
+        logger.info(f"Read data from {fn}: {len(df)} instances")
         # Drop all columns except id, text, atheism stance
         return df[["id", "text", target]]
     
