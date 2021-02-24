@@ -43,6 +43,7 @@ class ASCClassifier:
         estimators (classifiers). (Un)comment to exclude/include in training.
         """
 
+        logger.info("\n")
         model_attributes = ["clf", "accuracy", "micro_f1", "cv_mean", "cv_std"]
         self.model = namedtuple("Model", model_attributes)
         
@@ -121,12 +122,15 @@ class ASCClassifier:
         """
         
         logger.info("Training baseline model...")
-        # Baseline classifier: Linear SVM with bag of words features
-        baseline_clf = svm.SVC(kernel="linear", class_weight="balanced")
-        # Baseline feature: Simple bag of words
-        baseline_transformer = [("bow", CountVectorizer())]
+        # Baseline classifier: Linear SVM
+        baseline_clf = svm.SVC(kernel="linear")
+        # Baseline features: Simple word/character n-grams
+        baseline_transformers = [("bow", CountVectorizer(ngram_range=(1,3))),
+                                 ("boc", CountVectorizer(ngram_range=(2,5), 
+                                                         analyzer="char"))]
         # Build and train model
-        baseline_ppl = self._build_pipeline(baseline_clf, baseline_transformer, preprocessing=False)
+        baseline_ppl = self._build_pipeline(baseline_clf, baseline_transformers, 
+                                            preprocessing=False)
         baseline_ppl.fit(X_train, y_train)
         
         # Cross validation
@@ -223,11 +227,12 @@ class ASCClassifier:
         """Pickles a model.
 
         Args:
-            estimator (#TODO): The estimator to pickle.
+            estimator (sklearn.pipeline.Pipeline): The estimator/pipeline to pickle.
             fn (string): Path where it should be saved.
         """
         
         joblib.dump(estimator, fn, compress = 1)
+        logger.info(f"Dumped model in {fn}")
         
     def load_model(self, fn):
         """Loads a pickled model.
@@ -236,9 +241,10 @@ class ASCClassifier:
             fn (string): Path to the pickle jar.
 
         Returns:
-            #TODO: The model
+            sklearn.pipeline.Pipeline: The model
         """
         
+        logger.info(f"Loaded model from {fn}")
         return joblib.load(fn)
     
     def _read_file(self, fn, target):
@@ -303,5 +309,4 @@ if __name__ == "__main__":
     for t in targets:
         print(t.upper())
         model = clf.train(f, t, test_model=testing)
-        print()
-    clf.save_model(model, "model.pkl")
+        print() 
