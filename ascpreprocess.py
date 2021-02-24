@@ -1,4 +1,4 @@
-# preprocess.py
+# ascpreprocess.py
 # Preprocesses the Atheism Stance Corpus for use with Pandas
 
 import pandas as pd
@@ -10,6 +10,7 @@ class ASCPreprocess():
 
     def __init__(self, input_fn, output_fn):
         """Constructor. Calls the individual preprocessing functions.
+        
         Args:
             input_fn (str): Path to the original ASC
             output_fn (str): Desired output path
@@ -21,6 +22,7 @@ class ASCPreprocess():
     def fix_whitespace(self, input_fn, output_fn):
         """Fixes the whitespace error and simplifies the stance columns.
         Also removes superfluous whitespace from text.
+        
         Args:
             input_fn (str): Path to the original ASC
             output_fn (str): Desired output path
@@ -54,6 +56,7 @@ class ASCPreprocess():
     def preprocess_for_classification(self, fn):
         """Simplifies the data further by renaming columns and representing
         stances as ints.
+        
         Args:
             fn (str): Input/output path (the input file is overwritten)
         """
