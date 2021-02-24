@@ -1,7 +1,6 @@
 # classifier.py
 # The classifier
 
-from collections import namedtuple
 import logging
 from time import time
 
@@ -43,13 +42,10 @@ class ASCClassifier:
         (classifiers) and parameters. (Un)comment to exclude/include in training.
         """
 
-        logger.info("\n")
-        model_attributes = ["clf", "accuracy", "micro_f1", "cv_mean", "cv_std"]
-        self.model = namedtuple("Model", model_attributes)
-        
-        # Use this when using custom preprocessing/tokenizing
+        # Use this CountVectorizer when using custom preprocessing/tokenizing
+        # You may also add more parameters
         bow = CountVectorizer(tokenizer=dummy, preprocessor=dummy)
-        # TF-IDF on POS tags
+        # Feature: TF-IDF on POS tags
         pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
         
         # List of available transformers/features
@@ -62,7 +58,7 @@ class ASCClassifier:
                                 ("twitter", TwitterFeaturesExtractor())
                             ]
         
-        # Parameters. Only concern BOW/CountVectorizer
+        # Parameters for grid search. Only concern BOW/CountVectorizer
         self.search_space = {
                              "features__bow__ngram_range": [(1,1), (1,2), (1,3)],
                              "features__bow__min_df": [0.01, 0.05, 0.1],
@@ -82,16 +78,11 @@ class ASCClassifier:
             be used for testing/evaluation. Defaults to False.
 
         Returns:
-            # TODO
-            namedtuple: model tuple (sklearn.Pipeline, accuracy, micro f1, 
-                                     cross validation mean, cross validation std)
+            sklearn.pipeline.Pipeline: The fitted baseline model.
         """
 
         # Import data
-        train_data = self._read_file(train_file, target)
-        # FIXME smallest possible dataset for splitting => 8:3, classes [1, 0, -1]
-        train_data = train_data[:11]
-        X_test = y_test = None
+        train_data = self._read_file(train_file, target)namedtu
         
         # Split dataset if classifier should be tested
         if test_model:
@@ -103,20 +94,22 @@ class ASCClassifier:
         X_train = list(train_data["text"])
         y_train = list(train_data[target])
         
-        logger.info(f"Training start")
-        
-        # baseline_model = self.train_baseline_model(X_train, y_train, X_test, y_test)
-        
+        logger.info(f"Training start...")
         ppl = self._build_pipeline(self.estimator, self.transformers)
-        ppl = self.evaluate_gridsearch(ppl, X_train, y_train, k=3)
-        # ppl.fit(X_train, y_train)
-        # cv_scores = self.evaluate_cv(ppl, X_train, y_train)
-        # print(cv_scores.mean(), cv_scores.std())
+        ppl.fit(X_train, y_train)
+        logger.info("...Training finished")
+        
+        # Cross-validate
+        cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        
+        # Evaluate model on test set
+        if test_model:
+            accuracy, f1 = self.evaluate_metrics(ppl, X_test, y_test)
         return ppl
         
     def train_baseline_model(self, X_train, y_train, X_test=None, y_test=None):
         """Trains a baseline model as described in Wojatzki & Zesch (2016): 
-        Linear SVM with word and character bag of words features.
+        Linear SVM with word and character ngram features.
         
         Evalutes the model if test data supplied.
 
@@ -127,8 +120,7 @@ class ASCClassifier:
             y_test (list, optional): See y_train. Defaults to None.
 
         Returns:
-            namedtuple: model tuple (sklearn.Pipeline, accuracy, micro f1, 
-                                     cross validation mean, cross validation std)
+            sklearn.pipeline.Pipeline: The fitted baseline model.
         """
         
         logger.info("Training baseline model...")
@@ -150,9 +142,8 @@ class ASCClassifier:
         accuracy = f1 = None
         if X_test and y_test:
             accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
-        baseline_model = self.model(baseline_ppl, accuracy, f1, cv_scores.mean(), cv_scores.std())
         logger.info("... Training baseline model finished")
-        return baseline_model
+        return baseline_ppl
     
     def evaluate_metrics(self, pipeline, X_test, y_test):
         """Evaluates a fitted estimator/pipeline on a test data set.
@@ -189,8 +180,8 @@ class ASCClassifier:
         logger.info(f"{k}-fold Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
         return cv_scores
     
-    def evaluate_gridsearch(self, pipeline, X, y, k=10):
-        """Implements sklearn gridsearch to find the best model given the 
+    def gridsearch(self, pipeline, X, y, k=10):
+        """Implements sklearn grid search to find the best model given the 
         parameters in the constructor.
         
         Args:
@@ -200,7 +191,6 @@ class ASCClassifier:
             k (int, optional): Number of folds. Defaults to 10.
 
         Returns:
-            # FIXME
             sklearn.pipeline.Pipeline: The best performing pipeline.
         """
         
@@ -223,8 +213,12 @@ class ASCClassifier:
         logger.info(f"Best micro f1 score: {grid_search.best_score_}")
         logger.info("Best estimator: ", grid_search.best_estimator_)) 
         
-        # FIXME
         return grid_search.best_estimator_
+    
+    def set_transformers(self, transformers):
+        ""
+        
+        self.transformers = transformers
     
     def save_model(self, estimator, fn):
         """Pickles a model.
@@ -306,6 +300,8 @@ class ASCClassifier:
             raise TypeError("Need transformer to build a pipeline")
         
         if preprocessing:
+            # FeatureUnion means that the transformations are applied 
+            # simultaneously instead of consecutively
             return Pipeline([("preprocessing", Preprocessor()),
                              ("features", FeatureUnion(transformers)), 
                              ("clf", clf)])
