@@ -6,6 +6,7 @@ from time import time
 
 import joblib
 from nltk import pos_tag
+from pandas import errors
 from pandas import read_table
 from sklearn import metrics, svm
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
@@ -233,22 +234,42 @@ class ASCClassifier:
         return grid_search.best_estimator_
     
     def predict(self, data, fn=None):
-        ""
+        """Uses self.model to make predictions for input data. Option to save 
+        the predictions to a tab-separated text file.
+
+        Args:
+            data (string|list): List of strings or path to input data.
+            fn (string, optional): Path where the predictions should be saved 
+            to. Defaults to None.
+
+        Raises:
+            TypeError: If self.model is not fitted. Try train() first.
+            TypeError: If data is not string or list.
+
+        Returns:
+            list: The predictions.
+        """
         
         if not self.model:
             raise TypeError("Model is not fitted yet. \
-                              Call train() on training data first \
-                              or load a pickled model with load_model().")
-            
+                             Call train() on training data first \
+                             or load a pickled model with load_model().")
+        if type(data) != str and type(data) != list:
+            raise TypeError("Input data needs to be filename or list of strings.")
+        if type(data) == str:
+            data = list(self._read_file_predict(data))
+        
         logger.info("Making predictions...")
         predictions = self.model.predict(data)
         assert len(data) == len(predictions)
+        logger.info("... Predictions done")
+        
         if fn: 
             with open(fn, mode="w+") as f:
                 f.write("ID\tPREDICTION\tTEXT")
                 for idx, pred in enumerate(predictions):
                     f.write(f"{str(idx)}\t{str(pred)}\t{data[idx]}\n")
-        logger.info("... Predictions done")
+            logger.info(f"Wrote predictions to {fn}")
         return predictions
     
     def save_model(self, fn, estimator=None):
@@ -286,7 +307,39 @@ class ASCClassifier:
         self.model = model
         return model
     
-    def _read_file(self, fn, target):
+    def _read_file_predict(self, fn):
+        """Reads the input data for predictions.
+
+        Args:
+            fn (string): Path to the input data.
+
+        Raises:
+            TypeError: If the file is empty or unreadable (e.g. not a text file).
+            ValueError: If can't find input text column in the DataFrame.
+
+        Returns:
+            pandas.DataFrame|pandas.Series: Text column from the input data.
+        """
+        
+        try:
+            df = read_table(fn)
+        except errors.ParserError:
+            raise TypeError(f"Could not read file {fn}. Is it a text file?")
+        if len(df) == 0:
+            raise TypeError(f"File {fn} is empty.")
+        logger.info(f"Read data from {fn}: {len(df)} instances")
+        if len(df.columns) == 1:
+            return df
+        # e.g. columns id and text
+        elif len(df.columns) == 2:
+            return df[1]
+        elif "text" in df.columns:
+            return df.text
+        else:
+            raise ValueError(f"Couldn't find input text column in {fn}.",
+                              "Column should be called 'text'.")
+    
+    def _read_file_train(self, fn, target):
         """Uses pandas to read and validate the input data from a file.
 
         Args:
@@ -294,13 +347,17 @@ class ASCClassifier:
             target (string): Class name of the target class, e.g. "atheism".
 
         Raises:
+            TypeError: If the file is empty or unreadable, e.g. not a tetx file.
             ValueError: If target is not a column in the data.
 
         Returns:
             pandas.DataFrame: DF with columns "id", "text", target.
         """
 
-        df = read_table(fn)
+        try:
+            df = read_table(fn)
+        except errors.ParserError:
+            raise TypeError(f"Could not read file {fn}. Is it a text file?")
         if len(df) == 0:
             raise TypeError(f"File {fn} is empty.")
         if target not in df.columns:
@@ -323,7 +380,7 @@ class ASCClassifier:
             list, list, list, list: Train and test sets. Test set may be None.
         """
         
-        train_data = self._read_file(fn, target)
+        train_data = self._read_file_train(fn, target)
         X_train = list(train_data["text"])
         y_train = list(train_data[target])
         n_classes = len(set(y_train))
