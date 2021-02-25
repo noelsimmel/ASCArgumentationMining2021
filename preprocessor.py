@@ -47,7 +47,8 @@ class Preprocessor(BaseEstimator, TransformerMixin):
         doc = self._tokenize(doc)
         ### All steps from here on out rely on tokenized doc! ###
         doc = self._remove_stopwords(doc)
-        doc = self._stem(doc)
+        # Stemming is disabled by default as it decreased accuracy
+        # doc = self._stem(doc)
         return doc
     
     def _clean(self, doc):
