@@ -2,6 +2,7 @@
 # Main file for interactive use
 
 import sys
+from time import time
 from classifier import ASCClassifier
 
 def start_train_mode(data_filename, target, model_filename, test_model=False, gridsearch=False):
@@ -17,10 +18,12 @@ def start_train_mode(data_filename, target, model_filename, test_model=False, gr
     """
 
     _validate_filenames([data_filename, model_filename])
+    time0 = time()
     clf = ASCClassifier()
     model = clf.train(data_filename, target, 
                       test_model=test_model, gridsearch=gridsearch)
     clf.save_model(model_filename, model)
+    print(f"Executed in {time()-time0} seconds")
 
 def start_baseline_mode(data_filename, target, model_filename, test_model=False):
     """Trains and pickles the baseline model specified in Mohammad et al. (2016).
@@ -33,9 +36,11 @@ def start_baseline_mode(data_filename, target, model_filename, test_model=False)
     """
     
     _validate_filenames([data_filename, model_filename])
+    time0 = time()
     clf = ASCClassifier()
     model = clf.train_baseline_model(data_filename, target, test_model=test_model)
     clf.save_model(model_filename, model)
+    print(f"Executed in {time()-time0} seconds")
     
 def start_predict_mode(data_filename, model_filename, output_filename=None):
     """Loads a pickled model and performs predictions.
@@ -50,11 +55,13 @@ def start_predict_mode(data_filename, model_filename, output_filename=None):
     _validate_filenames([data_filename, model_filename])
     if output_filename:
         _validate_filenames([data_filename, model_filename, output_filename])
+    time0 = time()
     clf = ASCClassifier()
     clf.load_model(model_filename)
     predictions = clf.predict(data_filename, output_filename)
     if not output_filename:
         print(predictions)
+    print(f"Executed in {time()-time0} seconds")
     
 def _validate_filenames(filenames):
     """Performs a quick check to see if the supplied filenames are valid. 
