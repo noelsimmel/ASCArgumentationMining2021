@@ -52,7 +52,9 @@ def start_predict_mode(data_filename, model_filename, output_filename=None):
         _validate_filenames([data_filename, model_filename, output_filename])
     clf = ASCClassifier()
     clf.load_model(model_filename)
-    clf.predict(data_filename, output_filename)
+    predictions = clf.predict(data_filename, output_filename)
+    if not output_filename:
+        print(predictions)
     
 def _validate_filenames(filenames):
     """Performs a quick check to see if the supplied filenames are valid. 
