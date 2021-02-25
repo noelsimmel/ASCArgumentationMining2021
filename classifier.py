@@ -187,7 +187,11 @@ class ASCClassifier:
         """
         
         cv_scores = cross_val_score(pipeline, X, y, cv=k, scoring="f1_micro")
-        logger.info(f"{k}-fold Cross-validation micro f1 mean {cv_scores.mean():.3f}, std {cv_scores.std():.3f}")
+        mean = cv_scores.mean()
+        if not mean <= 0 and not mean > 0:
+            raise ValueError("Cross-validation failed: Class underpopulated.",
+                             "Try using less folds or more class instances.")
+        logger.info(f"{k}-fold Cross-validation micro f1 mean {mean:.3f}, std {cv_scores.std():.3f}")
         return cv_scores
     
     def gridsearch(self, pipeline, X, y, k=5):
@@ -236,6 +240,7 @@ class ASCClassifier:
                               Call train() on training data first \
                               or load a pickled model with load_model().")
             
+        logger.info("Making predictions...")
         predictions = self.model.predict(data)
         assert len(data) == len(predictions)
         if fn: 
@@ -243,6 +248,7 @@ class ASCClassifier:
                 f.write("ID\tPREDICTION\tTEXT")
                 for idx, pred in enumerate(predictions):
                     f.write(f"{str(idx)}\t{str(pred)}\t{data[idx]}\n")
+        logger.info("... Predictions done")
         return predictions
     
     def save_model(self, fn, estimator=None):
@@ -295,8 +301,10 @@ class ASCClassifier:
         """
 
         df = read_table(fn)
+        if len(df) == 0:
+            raise TypeError(f"File {fn} is empty.")
         if target not in df.columns:
-            raise ValueError(f"Target '{target}' is not a column in the data")
+            raise ValueError(f"Target '{target}' is not a column in the data.\nColumns are: {list(df.columns)}")
         logger.info(f"Read data from {fn}: {len(df)} instances")
         # Drop all columns except id, text, atheism stance
         return df[["id", "text", target]]
@@ -318,13 +326,17 @@ class ASCClassifier:
         train_data = self._read_file(fn, target)
         X_train = list(train_data["text"])
         y_train = list(train_data[target])
+        n_classes = len(set(y_train))
         X_test = y_test = None
+        if n_classes < 2:
+            raise ValueError(f"Target '{target}' only has {n_classes} class ({y_train[0]}). \
+                               Needs at least 2 for classification.")
         
         # Split dataset if classifier should be tested
         if test_model:
             # FIXME remove seed
             train_data, test_data = train_test_split(train_data, test_size=0.2, 
-                                                     stratify=train_data[target], random_state=21)
+                                                    stratify=train_data[target], random_state=21)
             X_train = list(train_data["text"])
             y_train = list(train_data[target])
             X_test = list(test_data["text"])
