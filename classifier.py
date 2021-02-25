@@ -94,7 +94,7 @@ class ASCClassifier:
         logger.info("...Training finished")
         
         # Cross-validate
-        cv_scores = self.evaluate_cv(ppl, X_train, y_train)
+        self.evaluate_cv(ppl, X_train, y_train)
         
         # Grid search (warning: may take a long time if using many transformers)
         if gridsearch:
@@ -129,7 +129,7 @@ class ASCClassifier:
             sklearn.pipeline.Pipeline: The fitted baseline model.
         """
         
-        logger.info("Training baseline model...")
+        logger.info("Training baseline model start...")
         # Import data
         X_train, y_train, X_test, y_test = self._split_dataset(train_file, target, test_model)
             
@@ -143,17 +143,17 @@ class ASCClassifier:
         baseline_ppl = self._build_pipeline(baseline_clf, baseline_transformers, 
                                             preprocessing=False)
         baseline_ppl.fit(X_train, y_train)
+        logger.info("... Training baseline model finished")
         
         # Cross-validate
-        cv_scores = self.evaluate_cv(baseline_ppl, X_train, y_train)
+        self.evaluate_cv(baseline_ppl, X_train, y_train)
         
         # If testing model, evaluate
         if X_test and y_test:
-            accuracy, f1 = self.evaluate_metrics(baseline_ppl, X_test, y_test)
+            self.evaluate_metrics(baseline_ppl, X_test, y_test)
             # Re-fit on all data
             baseline_ppl.fit(X_train + X_test, y_train + y_test)
             
-        logger.info("... Training baseline model finished")
         return baseline_ppl
     
     def evaluate_metrics(self, pipeline, X_test, y_test):
@@ -227,7 +227,7 @@ class ASCClassifier:
         grid_search.fit(X, y)
         
         logger.info(f"... Grid search finished in {(time()-time0):.3f} seconds")
-        logger.info(f"Best micro f1 score: {grid_search.best_score_}")
+        logger.info(f"Best micro f1 score: {grid_search.best_score_:.3f}")
         logger.info("Best estimator:")
         logger.info(grid_search.best_estimator_)
         
@@ -235,7 +235,7 @@ class ASCClassifier:
     
     def predict(self, data, fn=None):
         """Uses self.model to make predictions for input data. Option to save 
-        the predictions to a tab-separated text file.
+        the predictions to a tab-separated text file with header ID/PREDICTION/TEXT.
 
         Args:
             data (string|list): List of strings or path to input data.
@@ -266,7 +266,7 @@ class ASCClassifier:
         
         if fn: 
             with open(fn, mode="w+") as f:
-                f.write("ID\tPREDICTION\tTEXT")
+                f.write("ID\tPREDICTION\tTEXT\n")
                 for idx, pred in enumerate(predictions):
                     f.write(f"{str(idx)}\t{str(pred)}\t{data[idx]}\n")
             logger.info(f"Wrote predictions to {fn}")
