@@ -46,24 +46,31 @@ class ASCClassifier:
         # Use this CountVectorizer when using custom preprocessing/tokenizing
         # You may also add more parameters
         bow = CountVectorizer(tokenizer=dummy, preprocessor=dummy)
+        # Best BOW parameters as found by 10-fold grid search on atheism target
+        # with only BOW feature
+        best_bow = CountVectorizer(tokenizer=dummy, preprocessor=dummy, 
+                                   min_df=0.005, max_df=0.7)
         # Feature: TF-IDF on POS tags
         pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
         
         # List of available transformers/features
+        # Best results were achieved by best_bow + pos_tfidf + polarity + length
         self.transformers = [
                                 ("bow", bow),
                                 ("pos_tfidf", pos_tfidf),
                                 ("polarity", AtheismPolarityExtractor()),
                                 ("length", AverageWordLengthExtractor()),
-                                ("ner", NamedEntityExtractor()),
-                                ("twitter", TwitterFeaturesExtractor())
+                                # ("ner", NamedEntityExtractor()),
+                                # ("twitter", TwitterFeaturesExtractor())
                             ]
         
         # Parameters for grid search. Only concern BOW/CountVectorizer
+        # Best results were achieved in testing with ngram range (1,1), 
+        # min_df 0.005, max_df 0.8
         self.search_space = {
-                             "features__bow__ngram_range": [(1,1), (1,2), (1,3)],
-                             "features__bow__min_df": [0.01, 0.05, 0.1],
-                             "features__bow__max_df": [0.75, 0.9, 1.0]
+                             "features__bow__ngram_range": [(1,1), (1,2)],
+                             "features__bow__min_df": [0.01, 0.1, 0.2],
+                             "features__bow__max_df": [0.7, 0.8, 0.9, 1.0]
                              }
         
         # Classifier
@@ -391,9 +398,8 @@ class ASCClassifier:
         
         # Split dataset if classifier should be tested
         if test_model:
-            # FIXME remove seed
             train_data, test_data = train_test_split(train_data, test_size=0.2, 
-                                                    stratify=train_data[target], random_state=21)
+                                                    stratify=train_data[target])
             X_train = list(train_data["text"])
             y_train = list(train_data[target])
             X_test = list(test_data["text"])
@@ -405,13 +411,19 @@ class ASCClassifier:
 
         Args:
             tokenized_data (list): List of tokens.
+            
+        Raises:
+            TypeError: If data is not tokenized.
 
         Returns:
             list: List of tokens concatenated with list of POS tags.
         """
         
-        # https://stackoverflow.com/a/33305005
-        return tokenized_data + [tag for _, tag in pos_tag(tokenized_data)]
+        try:
+            # https://stackoverflow.com/a/33305005
+            return tokenized_data + [tag for _, tag in pos_tag(tokenized_data)]
+        except TypeError:
+            raise TypeError("Cannot apply POS tagging. Is the data tokenized?")
     
     def _build_pipeline(self, clf, transformers, preprocessing=True):
         """Builds an sklearn pipeline consisting of preprocessor, transformers, 
