@@ -127,16 +127,20 @@ class TwitterFeaturesExtractor(BaseCustomTransformer):
             list: List of lists, each list contains Twitter token count as an int.
         """
         
-        return [[doc.count("mention") + doc.count("hashtag")] for doc in data]
+        return [[doc.count("mention"), doc.count("hashtag")] for doc in data]
     
 class WordFeaturesExtractor(BaseCustomTransformer):
     """Custom transformer class.
     
-    Extracts TODO
+    Extracts word-based features like average word length and vocabulary size.
     """
 
     def make_feature(self, data):
-        """Calculates TODO 
+        """Calculates word-based features. 
+        
+        By default: Average token length, vocabulary size. 
+        
+        Optional: Number of tokens.
 
         Args:
             data (list): List of tokenized documents.

@@ -6,14 +6,12 @@ from time import time
 
 import joblib
 from nltk import pos_tag
-from pandas import errors
-from pandas import read_table
+from pandas import errors, read_table
 from sklearn import metrics, svm
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import cross_val_score, train_test_split, GridSearchCV
 from sklearn.pipeline import Pipeline, FeatureUnion
 
-# File imports
 from transformers import AtheismPolarityExtractor, NamedEntityExtractor, \
                          TwitterFeaturesExtractor, WordFeaturesExtractor
 from preprocessor import Preprocessor
@@ -39,15 +37,14 @@ class ASCClassifier:
     def __init__(self):
         """Constructor.
         
-        Implements list of possible transformers (feature extractors), estimators 
-        (classifiers) and parameters. (Un)comment to exclude/include in training.
+        Implements list of possible transformers (feature extractors), classifiers 
+        and parameters. (Un)comment to exclude/include in training.
         """
 
         # Use this CountVectorizer when using custom preprocessing/tokenizing
         # You may also add more parameters
         bow = CountVectorizer(tokenizer=dummy, preprocessor=dummy)
-        # Best BOW parameters as found by 10-fold grid search on atheism target
-        # with only BOW feature
+        # Best BOW parameters as found by grid search with only BOW feature
         bow_best_atheism = CountVectorizer(tokenizer=dummy, preprocessor=dummy, 
                                            min_df=0.01, max_df=0.7)
         bow_best_christianity = CountVectorizer(tokenizer=dummy, preprocessor=dummy, 
@@ -56,9 +53,9 @@ class ASCClassifier:
         pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
         
         # List of available transformers/features
-        # Best results were achieved by best_bow + pos_tfidf + polarity + length
+        # Best results were achieved by best_bow + pos_tfidf + polarity + word
         self.transformers = [
-                                ("bow", bow_best_christianity),
+                                ("bow", bow_best_atheism),
                                 ("pos_tfidf", pos_tfidf),
                                 ("polarity", AtheismPolarityExtractor()),
                                 # ("ner", NamedEntityExtractor()),
@@ -66,19 +63,17 @@ class ASCClassifier:
                                 ("word", WordFeaturesExtractor()),
                             ]
         
-        # Parameters for grid search. Only concern BOW/CountVectorizer
-        # Best results were achieved in testing with ngram range (1,1), 
-        # min_df 0.005, max_df 0.8
+        # Example parameters for grid search. Only concern BOW/CountVectorizer
         self.search_space = {
-                            #  "features__bow__ngram_range": [(1,1), (1,2)],
+                             "features__bow__ngram_range": [(1,1), (1,2)],
                              "features__bow__min_df": [0.005, 0.01, 0.1],
                              "features__bow__max_df": [0.7, 0.8, 0.9, 1.0]
                              }
         
         # Classifier
-        self.estimator = svm.SVC(kernel="linear", class_weight="balanced")
+        self.classifier = svm.SVC(kernel="linear", class_weight="balanced")
         
-        # The trained model (= fitted pipeline) (result of self.train())
+        # The trained model (= pipeline fitted on all data) (result of self.train())
         self.model = None
         
     def train(self, train_file, target, test_model=False, gridsearch=False):
@@ -89,16 +84,19 @@ class ASCClassifier:
             target (string): Class name, e.g. atheism.
             test_model (bool, optional): Whether part of the input data should 
             be used for testing/evaluation. Defaults to False.
+            gridsearch (bool, optional): Whether grid search for parameter tuning 
+            should be performed. May take a long time depending on the search space.
+            Defaults to False.
 
         Returns:
-            sklearn.pipeline.Pipeline: The fitted baseline model.
+            sklearn.pipeline.Pipeline: The trained model, fitted on ALL data.
         """
 
         # Import data
         X_train, y_train, X_test, y_test = self._split_dataset(train_file, target, test_model)
         logger.info(f"Training start...")
         # Build and fit model
-        ppl = self._build_pipeline(self.estimator, self.transformers)
+        ppl = self._build_pipeline(self.classifier, self.transformers)
         ppl.fit(X_train, y_train)
         logger.info("...Training finished")
         
@@ -123,7 +121,7 @@ class ASCClassifier:
         return ppl
         
     def train_baseline_model(self, train_file, target, test_model=False):
-        """Trains a baseline model as described in Wojatzki & Zesch (2016): 
+        """Trains a baseline model as described in Mohammad et al. (2016): 
         Linear SVM with word and character ngram features.
         
         Evalutes the model if test data supplied.
@@ -135,7 +133,7 @@ class ASCClassifier:
             y_test (list, optional): See y_train. Defaults to None.
 
         Returns:
-            sklearn.pipeline.Pipeline: The fitted baseline model.
+            sklearn.pipeline.Pipeline: The baseline model, fitted on ALL data.
         """
         
         logger.info("Training baseline model start...")
@@ -166,10 +164,10 @@ class ASCClassifier:
         return baseline_ppl
     
     def evaluate_metrics(self, pipeline, X_test, y_test):
-        """Evaluates a fitted estimator/pipeline on a test data set.
+        """Evaluates a fitted classifier/pipeline on a test data set.
 
         Args:
-            pipeline (sklearn estimator|pipeline): A fitted model.
+            pipeline (sklearn classifier|pipeline): A fitted model.
             X_test (list): List of document strings.
             y_test (list): List of class labels, e.g. -1/0/1.
 
@@ -184,10 +182,10 @@ class ASCClassifier:
         return accuracy, f1
     
     def evaluate_cv(self, pipeline, X, y, k=10):
-        """Evaluates a fitted estimator/pipeline using cross-validation.
+        """Evaluates a fitted classifier/pipeline using cross-validation.
 
         Args:
-            pipeline (sklearn estimator|pipeline): A fitted or unfitted model.
+            pipeline (sklearn classifier|pipeline): A fitted or unfitted model.
             X (list): List of document strings.
             y (list): List of class labels, e.g. -1/0/1.
             k (int, optional): Number of folds. Defaults to 10.
@@ -237,7 +235,7 @@ class ASCClassifier:
         
         logger.info(f"... Grid search finished in {(time()-time0):.3f} seconds")
         logger.info(f"Best micro f1 score: {grid_search.best_score_:.3f}")
-        logger.info("Best estimator:")
+        logger.info("Best model:")
         logger.info(grid_search.best_estimator_)
         
         return grid_search.best_estimator_
@@ -281,24 +279,24 @@ class ASCClassifier:
             logger.info(f"Wrote predictions to {fn}")
         return predictions
     
-    def save_model(self, fn, estimator=None):
+    def save_model(self, fn, model=None):
         """Pickles a model.
 
         Args:
             fn (string): Path where it should be saved (e.g. .pkl file).
-            estimator (sklearn.pipeline.Pipeline, optional): The estimator/pipeline 
+            model (sklearn.pipeline.Pipeline, optional): The model/pipeline 
             to pickle. Saves self.model by default.
 
         Raises:
-            TypeError: If no estimator is supplied self.model=None.
+            TypeError: If no model is supplied and self.model=None.
         """
         
-        if not estimator:
-            estimator = self.model
-        if not estimator:
+        if not model:
+            model = self.model
+        if not model:
             raise TypeError("Nothing to pickle. \
-                             Please supply an estimator or train self.model.")
-        joblib.dump(estimator, fn, compress = 1)
+                             Please supply a model or train self.model.")
+        joblib.dump(model, fn, compress = 1)
         logger.info(f"Dumped model in {fn}")
         
     def load_model(self, fn):
@@ -308,7 +306,7 @@ class ASCClassifier:
             fn (string): Path to the pickle jar.
 
         Returns:
-            sklearn.pipeline.Pipeline: The model
+            sklearn.pipeline.Pipeline: The model.
         """
         
         logger.info(f"Loaded model from {fn}")
@@ -339,7 +337,7 @@ class ASCClassifier:
         logger.info(f"Read data from {fn}: {len(df)} instances")
         if len(df.columns) == 1:
             return df
-        # e.g. columns id and text
+        # e.g. columns "id" and "text"  
         elif len(df.columns) == 2:
             return df[1]
         elif "text" in df.columns:
@@ -356,7 +354,7 @@ class ASCClassifier:
             target (string): Class name of the target class, e.g. "atheism".
 
         Raises:
-            TypeError: If the file is empty or unreadable, e.g. not a tetx file.
+            TypeError: If the file is empty or unreadable, e.g. not a text file.
             ValueError: If target is not a column in the data.
 
         Returns:
@@ -376,13 +374,12 @@ class ASCClassifier:
         return df[["id", "text", target]]
     
     def _split_dataset(self, fn, target, test_model=False):
-        """Read file and make X and y datasets. Also split in train/test set 
-        if desired.
+        """Read file and make X and y datasets. Split in train/test set if desired.
 
         Args:
             fn (string): Path to input data.
             target (string): Classification target/column name, e.g. "atheism".
-            test_model (bool, optional): Whether to make a train/test split. 
+            test_model (bool, optional): Whether to make an 80:20 train/test split. 
             Defaults to false.
 
         Returns:
@@ -399,6 +396,7 @@ class ASCClassifier:
                                Needs at least 2 for classification.")
         
         # Split dataset if classifier should be tested
+        # Use parameter random_state= for seeding
         if test_model:
             train_data, test_data = train_test_split(train_data, test_size=0.2, 
                                                     stratify=train_data[target])
@@ -429,17 +427,18 @@ class ASCClassifier:
     
     def _build_pipeline(self, clf, transformers, preprocessing=True):
         """Builds an sklearn pipeline consisting of preprocessor, transformers, 
-        and an estimator. Does NOT perform fit or transform.
+        and a classifier. Does NOT perform fit or transform.
 
         Args:
-            clf (estimator): An sklearn estimator such as sklearn.svm.SVC.  
-            transformers (list): List of transformers, see constructor.
+            clf (classifier): sklearn classifier such as sklearn.svm.SVC.  
+            transformers (list): List of transformers, see constructor. 
+            Transformations are applied separately (FeatureUnion), not consecutively.
             preprocessing (bool, optional): Whether the pipeline should include 
             preprocessing from the Preprocessor class. Defaults to True.
 
         Raises:
             TypeError: If no transformers are supplied. (Data needs to be 
-            transformed to numeric values before classification)
+            transformed to numeric values before classification.)
 
         Returns:
             sklearn.pipeline.Pipeline: The unfitted pipeline.
@@ -450,7 +449,7 @@ class ASCClassifier:
         
         if preprocessing:
             # FeatureUnion means that the transformations are applied 
-            # simultaneously instead of consecutively
+            # separately instead of consecutively
             return Pipeline([("preprocessing", Preprocessor()),
                              ("features", FeatureUnion(transformers)), 
                              ("clf", clf)])
@@ -469,7 +468,8 @@ if __name__ == "__main__":
     # targets = ["atheism", "supernatural", "christianity", "islam"]
     targets = ["atheism"]
     testing = True
+    search = False
     for t in targets:
         print(t.upper())
-        model = clf.train(f, t, test_model=testing, gridsearch=True)
+        model = clf.train(f, t, test_model=testing, gridsearch=search)
         print() 
