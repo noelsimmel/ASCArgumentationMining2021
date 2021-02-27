@@ -77,30 +77,6 @@ class AtheismPolarityExtractor(BaseCustomTransformer):
             elif tok in self.anti_atheism: s -= 1
         return s 
 
-class AverageWordLengthExtractor(BaseCustomTransformer):
-    """Custom transformer class.
-    
-    Extracts the average word/token length.
-    """
-
-    def make_feature(self, data):
-        """Calculates average token length (numpy.mean()) for all documents. 
-
-        Args:
-            data (list): List of untokenized strings or list of list of string tokens. 
-            If untokenized, naive .split() tokenization will be applied.
-
-        Returns:
-            list: List of lists, each list contains mean as float.
-        """
-        
-        # For untokenized text
-        try:
-            return [[mean([len(token) for token in doc.split()])] for doc in data]
-        # For tokenized text
-        except AttributeError:
-            return [[mean([len(token) for token in doc])] for doc in data]
-        
 class NamedEntityExtractor(BaseCustomTransformer):
     """Custom transformer class.
     
@@ -152,3 +128,32 @@ class TwitterFeaturesExtractor(BaseCustomTransformer):
         """
         
         return [[doc.count("mention") + doc.count("hashtag")] for doc in data]
+    
+class WordFeaturesExtractor(BaseCustomTransformer):
+    """Custom transformer class.
+    
+    Extracts TODO
+    """
+
+    def make_feature(self, data):
+        """Calculates TODO 
+
+        Args:
+            data (list): List of tokenized documents.
+
+        Returns:
+            list: List of lists, each list contains numbers.
+        """
+        
+        all_docs = []
+        for doc in data:
+            features = []
+            # Average word/token length
+            features.append(mean([len(token) for token in doc]))
+            # Vocabulary size
+            features.append(len(set(doc)))
+            # No. of tokens - increased cv std in testing
+            # features.append(len(doc))
+            all_docs.append(features)
+        return all_docs
+        

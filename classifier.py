@@ -14,8 +14,8 @@ from sklearn.model_selection import cross_val_score, train_test_split, GridSearc
 from sklearn.pipeline import Pipeline, FeatureUnion
 
 # File imports
-from transformers import AtheismPolarityExtractor, AverageWordLengthExtractor, \
-                         NamedEntityExtractor, TwitterFeaturesExtractor 
+from transformers import AtheismPolarityExtractor, NamedEntityExtractor, \
+                         TwitterFeaturesExtractor, WordFeaturesExtractor
 from preprocessor import Preprocessor
 
 # Logging configuration
@@ -48,28 +48,30 @@ class ASCClassifier:
         bow = CountVectorizer(tokenizer=dummy, preprocessor=dummy)
         # Best BOW parameters as found by 10-fold grid search on atheism target
         # with only BOW feature
-        best_bow = CountVectorizer(tokenizer=dummy, preprocessor=dummy, 
-                                   min_df=0.005, max_df=0.7)
+        bow_best_atheism = CountVectorizer(tokenizer=dummy, preprocessor=dummy, 
+                                           min_df=0.01, max_df=0.7)
+        bow_best_christianity = CountVectorizer(tokenizer=dummy, preprocessor=dummy, 
+                                                min_df=0.003, max_df=0.7, ngram_range=(1,2))
         # Feature: TF-IDF on POS tags
         pos_tfidf = TfidfVectorizer(tokenizer=self._pos_tagger, preprocessor=dummy)
         
         # List of available transformers/features
         # Best results were achieved by best_bow + pos_tfidf + polarity + length
         self.transformers = [
-                                ("bow", bow),
+                                ("bow", bow_best_christianity),
                                 ("pos_tfidf", pos_tfidf),
                                 ("polarity", AtheismPolarityExtractor()),
-                                ("length", AverageWordLengthExtractor()),
                                 # ("ner", NamedEntityExtractor()),
-                                # ("twitter", TwitterFeaturesExtractor())
+                                # ("twitter", TwitterFeaturesExtractor()),
+                                ("word", WordFeaturesExtractor()),
                             ]
         
         # Parameters for grid search. Only concern BOW/CountVectorizer
         # Best results were achieved in testing with ngram range (1,1), 
         # min_df 0.005, max_df 0.8
         self.search_space = {
-                             "features__bow__ngram_range": [(1,1), (1,2)],
-                             "features__bow__min_df": [0.01, 0.1, 0.2],
+                            #  "features__bow__ngram_range": [(1,1), (1,2)],
+                             "features__bow__min_df": [0.005, 0.01, 0.1],
                              "features__bow__max_df": [0.7, 0.8, 0.9, 1.0]
                              }
         
