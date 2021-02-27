@@ -72,21 +72,21 @@ python3 main.py data/my_data.txt model.pkl -p
 All tests were done using ```random_state=0``` for splitting the training data.
 | features | topic | accuracy | cv mean | cv std || topic | accuracy | cv mean | cv std |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **baseline** | *atheism* | 0.727 | 0.715 | **0.031** || *supernatural* | 0.797 | 0.807 | 0.034 |
-| **vanilla BOW** | *atheism* | 0.727 | 0.687 | 0.066 || *supernatural* | 0.797 | 0.815 | 0.035 |
-| **best BOW** | *atheism* | 0.762 | 0.734 | 0.039 || *supernatural* | 0.811** | 0.816 | **0.029** |
-| &#8627; parameters | *atheism* | ```min_df=0.01``` | ```max_df=0.7``` ||| *supernatural* | none
-| **best** | *atheism* | **0.818** | **0.757** | 0.058 || *supernatural* | **0.832** | **0.820** | 0.037 |
+| **baseline** | *atheism* | 0.727 | 0.715 | **0.031** || *supern.* | 0.797 | 0.807 | 0.034 |
+| **vanilla BOW** | *atheism* | 0.727 | 0.687 | 0.066 || *supern.* | 0.797 | 0.815 | 0.035 |
+| **best BOW** | *atheism* | 0.762 | 0.734 | 0.039 || *supern.* | 0.811** | 0.816 | **0.029** |
+| &#8627; parameters | *atheism* | ```min_df=```<br>```0.01``` | ```max_df=```<br>```0.7``` ||| *supern.* | none
+| **best** | *atheism* | **0.818** | **0.757** | 0.058 || *supern.* | **0.832** | **0.820** | 0.037 |
 
 &nbsp;
 | features | topic | accuracy | cv mean | cv std || topic | accuracy | cv mean | cv std |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **baseline** | *christianity* | 0.811 | 0.843 | 0.027 || *islam* | 0.944 | 0.953 | 0.011 |
-| **vanilla BOW** | *christianity* | 0.818 | 0.820 | 0.037 || *islam* | 0.937 | 0.958 | 0.016 |
-| **best BOW** | *christianity* | 0.888 | 0.850 | **0.024** || *islam* | **0.951** | **0.962** | **0.010** |
-| &#8627;parameters | *christianity* | ```min_df=0.003``` | ```max_df=0.7``` | ```ngram_range=```<br>```(1,2)``` || *islam* | none
-| **best** | *christianity* | **0.902** | **0.855** | 0.029 || *islam* | 0.951 | 0.962 | 0.013 |
-| **just polarity** | *christianity* | 0.713 | 0.699 | 0.036 ||
+| **baseline** | *christ.* | 0.811 | 0.843 | 0.027 || *islam* | 0.944 | 0.953 | 0.011 |
+| **vanilla BOW** | *christ.* | 0.818 | 0.820 | 0.037 || *islam* | 0.937 | 0.958 | 0.016 |
+| **best BOW** | *christ.* | 0.888 | 0.850 | **0.024** || *islam* | **0.951** | **0.962** | **0.010** |
+| &#8627;parameters | *christ.* | ```min_df=```<br>```0.003``` | ```max_df=```<br>```0.7``` | ```ngram_range=```<br>```(1,2)``` || *islam* | none
+| **best** | *christ.* | **0.902** | **0.855** | 0.029 || *islam* | 0.951 | 0.962 | 0.013 |
+| **just polarity** | *christ.* | 0.713 | 0.699 | 0.036 ||
 
 &nbsp;
 * Vanilla BOW means sklearn's out-of-the-box ```CountVectorizer()``` with no parameters.
