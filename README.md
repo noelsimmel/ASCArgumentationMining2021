@@ -37,7 +37,7 @@ python3 main.py data target model -b -t -g
 
 ### Examples
 #### Just training
-(You may adjust the model parameters in the ASCClassifier constructor.)
+You may adjust the model parameters in the ASCClassifier constructor in ```classifier.py```.
 ```cmd
 python3 main.py data/corpus.txt atheism model.pkl
 ```
@@ -55,7 +55,7 @@ python3 main.py data model [output] -p
 ### Arguments
 * ```data```: Path to the input data (text file).
 * ```model```: Path to a pickled model, e.g. .pkl file.
-* ```output```: *Optional* path where the predictions should be saved (tab-separated text file). If not supplied, the list of predictions is printed to the console.
+* ```output```: *Optional* path where the predictions should be saved to (tab-separated text file). If not supplied, the list of predictions is printed to the console.
 
 ### Examples
 #### Writing to file
@@ -74,7 +74,7 @@ All tests were done using ```random_state=0``` for splitting the training data.
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **baseline** | *atheism* | 0.727 | 0.715 | **0.031** || *supern.* | 0.797 | 0.807 | 0.034 |
 | **vanilla BOW** | *atheism* | 0.727 | 0.687 | 0.066 || *supern.* | 0.797 | 0.815 | 0.035 |
-| **best BOW** | *atheism* | 0.762 | 0.734 | 0.039 || *supern.* | 0.811** | 0.816 | **0.029** |
+| **best BOW** | *atheism* | 0.762 | 0.734 | 0.039 || *supern.* | 0.811 | 0.816 | **0.029** |
 | &#8627; parameters | *atheism* | ```min_df=```<br>```0.01``` | ```max_df=```<br>```0.7``` ||| *supern.* | none
 | **best** | *atheism* | **0.818** | **0.757** | 0.058 || *supern.* | **0.832** | **0.820** | 0.037 |
 
@@ -89,6 +89,7 @@ All tests were done using ```random_state=0``` for splitting the training data.
 | **just polarity** | *christ.* | 0.713 | 0.699 | 0.036 ||
 
 &nbsp;
-* Vanilla BOW means sklearn's out-of-the-box ```CountVectorizer()``` with no parameters.
-* Best BOW means custom preprocessing + best parameters for CountVectorizer() for this topic as found by grid search, but no other features.
-* Best means the highest-scoring feature configuration, i.e. preprocessing + best BOW + pos_tfidf, polarity and word features. This is the default configuration.
+* **Vanilla BOW** means sklearn's out-of-the-box ```CountVectorizer()``` with no parameters.
+* **Best BOW** means custom preprocessing + best parameters for CountVectorizer() for this topic as found by grid search, but no other features.
+* **Best** means the highest-scoring feature configuration, i.e. preprocessing + best BOW + pos_tfidf, polarity and word features. This is the default configuration.
+* **cv** means 10-fold cross-validation on the training data.
